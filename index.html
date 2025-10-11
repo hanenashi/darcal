@@ -2,262 +2,411 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Calendar Template Lab — SVG</title>
+<title>Calendar Maker — presets, draggable, ZIP export</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root {
-    --bg:#0e0f11; --fg:#e7e7e7; --muted:#a3a3a3; --accent:#4da3ff; --grid:#26282c; --guide:#6bf;
+    --bg:#0f1115; --fg:#e8e8e8; --muted:#a6a6a6; --panel:#13161c; --line:#262a33;
+    --accent:#5aa9ff; --guide:#78d1ff; --hud:#ffe16b;
   }
-  html,body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header { position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(6px); background:#0e0f11cc; border-bottom:1px solid #1a1c20; }
-  .bar { display:flex; gap:.75rem; align-items:center; padding:.6rem .9rem; flex-wrap:wrap; }
-  .bar label { color:var(--muted); font-size:.9rem; }
-  .bar input, .bar select { background:#14161a; color:var(--fg); border:1px solid #24262b; border-radius:.5rem; padding:.3rem .5rem; }
-  .wrap { padding:1rem; display:grid; grid-template-columns:repeat(3, 1fr); gap:1rem; }
-  .card { background:#111317; border:1px solid #1a1c20; border-radius:.8rem; padding:.6rem; position:relative; }
-  .title { display:flex; justify-content:space-between; align-items:center; color:var(--muted); margin:.2rem 0 .5rem; }
-  button { background:#151922; color:var(--fg); border:1px solid #2a2f39; border-radius:.6rem; padding:.35rem .6rem; cursor:pointer; }
-  button:active { transform:translateY(1px); }
-  .guide-label { position:absolute; background:#0b2340; color:#bfe1ff; border:1px solid #1e4772; padding:2px 6px; border-radius:.4rem; font-size:.78rem; pointer-events:none; white-space:nowrap; }
-  .muted { color:var(--muted); }
-  .small { font-size:.85rem; }
-  .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-  .tip { color:#9fb8ff; }
+  html,body {margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .app {display:grid; grid-template-columns:360px 1fr; min-height:100vh}
+  aside {background:var(--panel); border-right:1px solid var(--line); padding:10px 12px; overflow:auto}
+  main {display:flex; flex-direction:column; gap:10px; padding:10px 12px}
+  h2 {font-size:13px; color:var(--muted); margin:12px 0 6px; text-transform:uppercase; letter-spacing:.06em}
+  .row {display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap}
+  label {min-width:120px; color:var(--muted); font-size:12px}
+  input[type="number"], input[type="text"], select {background:#161a20; color:var(--fg); border:1px solid #2a2f39; border-radius:.5rem; padding:.35rem .5rem; min-width:0}
+  input[type="checkbox"]{transform:translateY(1px)}
+  .grid2 {display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .btns {display:flex; gap:8px; flex-wrap:wrap; margin:10px 0}
+  button {background:#172133; color:var(--fg); border:1px solid #2a3652; border-radius:.6rem; padding:.4rem .7rem; cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .preview-wrap {position:relative; background:#0c0e12; border:1px solid var(--line); border-radius:.75rem; padding:8px; overflow:auto}
+  .bar {display:flex; gap:8px; align-items:center; justify-content:space-between}
+  .hint {color:#9fb8ff; font-size:12px}
+  .guide {stroke:var(--guide); stroke-width:1.5; stroke-dasharray:6 4; fill:none}
+  .handle {fill:#0c1829; stroke:var(--guide); stroke-width:1.5}
+  .hud {position:absolute; z-index:10; background:var(--hud); color:#000; padding:2px 6px; border-radius:.35rem; font-size:12px; border:1px solid #b89c2a; pointer-events:none}
 </style>
 </head>
 <body>
+<div class="app">
+  <aside>
+    <h2>Language</h2>
+    <div class="grid2">
+      <div class="row"><label>Preset</label>
+        <select id="lang">
+          <option value="ENG">ENG — English</option>
+          <option value="CZE">CZE — Čeština</option>
+          <option value="JA">JA — 日本語</option>
+        </select>
+      </div>
+      <div class="row"><label>Full names</label><input id="fullNames" type="checkbox"></div>
+    </div>
 
-<header>
-  <div class="bar">
+    <h2>Document</h2>
     <div class="row">
-      <label>Year</label>
-      <input id="year" type="number" min="1600" max="4000" value="2026" />
-      <label>First day</label>
-      <select id="firstDay">
-        <option value="0">Sunday</option>
-        <option value="1">Monday</option>
+      <label>Preset</label>
+      <select id="pagePreset">
+        <option value="A4P">A4 Portrait (210×297)</option>
+        <option value="A4L">A4 Landscape (297×210)</option>
+        <option value="A5P">A5 Portrait (148×210)</option>
+        <option value="A5L">A5 Landscape (210×148)</option>
+        <option value="B5P">B5 Portrait (176×250)</option>
+        <option value="B5L">B5 Landscape (250×176)</option>
+        <option value="B4P">B4 Portrait (250×353)</option>
+        <option value="B4L">B4 Landscape (353×250)</option>
+        <option value="CUSTOM">Custom (mm)</option>
       </select>
     </div>
-    <div class="row">
-      <label>Font</label>
-      <input id="fontFamily" type="text" value="Inter, system-ui, Arial" size="24"/>
-      <label>Header size</label>
-      <input id="hdrSize" type="number" value="20" min="8" max="64" />
-      <label>Day size</label>
-      <input id="daySize" type="number" value="14" min="8" max="40" />
-      <label>Stroke</label>
-      <input id="stroke" type="number" value="1" step="0.5" min="0" max="4" />
-      <label>Radius</label>
-      <input id="radius" type="number" value="8" min="0" max="30" />
+    <div class="grid2">
+      <div class="row"><label>Page W (mm)</label><input id="pageW" type="number" value="210" step="1"></div>
+      <div class="row"><label>Page H (mm)</label><input id="pageH" type="number" value="297" step="1"></div>
     </div>
-    <div class="row">
-      <span class="small muted">Drag the cyan guides: top margin, left margin, column gutter, row gutter. Changes apply to all months.</span>
-    </div>
-  </div>
-</header>
 
-<main class="wrap" id="grid"></main>
+    <h2>Calendar Block (mm)</h2>
+    <div class="grid2">
+      <div class="row"><label>X</label><input id="calX" type="number" value="15" step=".5"></div>
+      <div class="row"><label>Y</label><input id="calY" type="number" value="150" step=".5"></div>
+      <div class="row"><label>Width</label><input id="calW" type="number" value="180" step=".5"></div>
+      <div class="row"><label>Height</label><input id="calH" type="number" value="120" step=".5"></div>
+    </div>
+    <div class="row"><label>Show guides</label><input id="showGuides" type="checkbox" checked></div>
+
+    <h2>Month & Locale</h2>
+    <div class="grid2">
+      <div class="row"><label>Year</label><input id="year" type="number" value="2026"></div>
+      <div class="row"><label>Month</label>
+        <select id="month">
+          <script>
+            (()=>{ const ms=[1,2,3,4,5,6,7,8,9,10,11,12];
+              document.currentScript.outerHTML = ms.map((m,i)=>`<option value="${i}">${m}</option>`).join("");
+            })();
+          </script>
+        </select>
+      </div>
+    </div>
+    <div class="row"><label>First day</label>
+      <select id="firstDay"><option value="0">Sunday</option><option value="1">Monday (ISO)</option></select>
+    </div>
+
+    <h2>Header</h2>
+    <div class="row"><label>Text</label><input id="hdrText" type="text" value="{MONTH} {YEAR}"></div>
+    <div class="grid2">
+      <div class="row"><label>Font</label><input id="hdrFont" type="text" value="Inter, Arial"></div>
+      <div class="row"><label>Size (pt)</label><input id="hdrSize" type="number" value="18" step=".5"></div>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Align</label>
+        <select id="hdrAlign"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+      </div>
+      <div class="row"><label>Margin B (mm)</label><input id="hdrGap" type="number" value="6" step=".5"></div>
+    </div>
+
+    <h2>Grid & Cells</h2>
+    <div class="grid2">
+      <div class="row"><label>Stroke (pt)</label><input id="cellStrokePt" type="number" value="0.6" step=".1"></div>
+      <div class="row"><label>Radius (mm)</label><input id="cellRadius" type="number" value="2" step=".2"></div>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Gutter X (mm)</label><input id="gutX" type="number" value="2" step=".2"></div>
+      <div class="row"><label>Gutter Y (mm)</label><input id="gutY" type="number" value="2" step=".2"></div>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Table lines</label><input id="tableLines" type="checkbox"></div>
+      <div class="row"><label>Hide empty cells</label><input id="hideEmpty" type="checkbox"></div>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Prev/next numbers</label><input id="showAdj" type="checkbox"></div>
+      <div class="row"><label>(tone) Adj shade %</label><input id="adjAlpha" type="number" value="55" min="10" max="90" step="5"></div>
+    </div>
+
+    <h2>Day Number</h2>
+    <div class="grid2">
+      <div class="row"><label>Font</label><input id="dayFont" type="text" value="Inter, Arial"></div>
+      <div class="row"><label>Size (pt)</label><input id="daySizePt" type="number" value="9" step=".5"></div>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Offset X (mm)</label><input id="dayOffX" type="number" value="-1.5" step=".2"></div>
+      <div class="row"><label>Offset Y (mm)</label><input id="dayOffY" type="number" value="1.5" step=".2"></div>
+    </div>
+    <div class="row"><label>Anchor</label>
+      <select id="dayAnchor">
+        <option value="top-right">Top-Right</option>
+        <option value="top-left">Top-Left</option>
+        <option value="center">Center</option>
+        <option value="bottom-right">Bottom-Right</option>
+      </select>
+    </div>
+
+    <div class="btns">
+      <button id="generate">Generate All (preview & ZIP)</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="bar">
+      <span class="hint">Preview (scaled). Drag or resize the cyan rectangle; HUD shows mm in the foreground.</span>
+      <div>
+        <label>Month</label>
+        <select id="monthTop"></select>
+        <button id="prevM">◀</button><button id="nextM">▶</button>
+      </div>
+    </div>
+    <div class="preview-wrap" id="preview"><div id="hud" class="hud" style="display:none"></div></div>
+  </main>
+</div>
 
 <script>
-/* ===========================
-   “Coder” brain: implementation
-   =========================== */
+/* ===== Data & utils ===== */
+const PX_PER_MM = 96/25.4; const mm=v=>v*PX_PER_MM; const ptToPx=pt=>pt*(96/72);
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x)); const r1=v=>Math.round(v*10)/10;
 
-// --- Calendar math (Gregorian) ---
 function isLeap(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
-function daysInMonth(y,m){ return [31, isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m]; }
-function firstWeekday(y,m, firstDay) {
-  // JS Date: 0=Sun..6=Sat; adjust so firstDay=0 means Sunday or Monday etc.
-  const d = new Date(y, m, 1).getDay();
-  // shift so that return 0 = firstDay
-  return (d - firstDay + 7) % 7;
-}
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-function weekdayNames(firstDay) {
-  const base = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  return base.slice(firstDay).concat(base.slice(0, firstDay));
-}
+function daysInMonth(y,m){ return [31,isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m]; }
+function firstWeekday(y,m, firstDay){ const d=new Date(y,m,1).getDay(); return (d-firstDay+7)%7; }
 
-// --- Global shared layout state (draggable guides control these) ---
-const layout = {
-  W: 360, H: 300,       // month board size (inner SVG viewBox)
-  mTop: 48, mLeft: 24,  // inner margins
-  mRight: 24, mBottom: 28,
-  gutterX: 6, gutterY: 6,
-  hdrGap: 10,           // header to grid gap
+const MONTH_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTH_CZ = ["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
+const MONTH_JA = Array.from({length:12},(_,i)=>`${i+1}月`);
+const WD_EN_S = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const WD_EN_F = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const WD_CZ_S = ["Ne","Po","Út","St","Čt","Pá","So"];         // base: Sunday first
+const WD_CZ_F = ["Neděle","Pondělí","Úterý","Středa","Čtvrtek","Pátek","Sobota"];
+const WD_JA_S = ["日","月","火","水","木","金","土"];
+const WD_JA_F = ["日曜日","月曜日","火曜日","水曜日","木曜日","金曜日","土曜日"];
+
+const state = {
+  lang:"ENG", fullNames:false,
+  pageW:210, pageH:297, preset:"A4P",
+  year:(new Date()).getFullYear(), month:(new Date()).getMonth(), firstDay:0,
+  calX:15, calY:150, calW:180, calH:120, showGuides:true,
+  hdrText:"{MONTH} {YEAR}", hdrFont:"Inter, Arial", hdrSizePt:18, hdrAlign:"left", hdrGap:6,
+  cellStrokePt:0.6, cellRadius:2, gutX:2, gutY:2,
+  tableLines:false, hideEmpty:false, showAdj:false, adjAlpha:55,
+  dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right"
 };
 
-// Settings bound to UI controls
-const settings = {
-  year: 2026,
-  firstDay: 0, // 0 Sunday, 1 Monday
-  fontFamily: "Inter, system-ui, Arial",
-  hdrSize: 20,
-  daySize: 14,
-  stroke: 1,
-  radius: 8
-};
+const $=id=>document.getElementById(id);
+const previewHost = $("preview");
+let hud = $("hud");
 
-// --- DOM helpers ---
-const $ = sel => document.querySelector(sel);
-const gridEl = $("#grid");
-
-// --- Build 12 month cards ---
-function renderAll() {
-  gridEl.innerHTML = "";
-  const dnames = weekdayNames(settings.firstDay);
-  for (let m=0;m<12;m++){
-    const card = document.createElement("div");
-    card.className = "card";
-    const head = document.createElement("div");
-    head.className = "title";
-    head.innerHTML = `<strong>${MONTH_NAMES[m]} ${settings.year}</strong>
-      <span class="muted small mono">Export:
-        <button data-export="${m}">SVG</button>
-      </span>`;
-    card.appendChild(head);
-    const svg = renderMonthSVG(settings.year, m, dnames);
-    svg.dataset.month = m;
-    card.appendChild(svg);
-    gridEl.appendChild(card);
-  }
-  attachExports();
-  attachGuides(); // set once (absolute overlays per-card)
+function langMonths(){ return state.lang==="ENG"?MONTH_EN : state.lang==="CZE"?MONTH_CZ : MONTH_JA; }
+function langWeekdaysBase(){
+  const short = state.lang==="ENG"?WD_EN_S : state.lang==="CZE"?WD_CZ_S : WD_JA_S;
+  const full  = state.lang==="ENG"?WD_EN_F : state.lang==="CZE"?WD_CZ_F : WD_JA_F;
+  return state.fullNames? full : short;
+}
+function langWeekdays(){
+  // Rotate to match firstDay (0=Sun). Arrays above are Sunday-first.
+  const base = langWeekdaysBase().slice();
+  if (state.firstDay===0) return base;
+  return base.slice(1).concat(base.slice(0,1));
 }
 
-// --- Per-month SVG render ---
-function renderMonthSVG(year, month, dnames){
-  const {W,H,mTop,mLeft,mRight,mBottom,gutterX,gutterY,hdrGap} = layout;
-  const cols = 7, rows = 6;
-  const innerW = W - mLeft - mRight;
-  const innerH = H - mTop - mBottom - settings.hdrSize - hdrGap;
-  const cellW = (innerW - gutterX*(cols-1)) / cols;
-  const cellH = (innerH - gutterY*(rows-1)) / rows;
+/* ===== Wiring (live apply) ===== */
+function bindNum(id,key){ const e=$(id); const fn=()=>{ state[key]=parseFloat(e.value)||0; render(); }; e.addEventListener("input",fn); state[key]=parseFloat(e.value)||state[key]; }
+function bindTxt(id,key){ const e=$(id); const fn=()=>{ state[key]=e.value; render(); }; e.addEventListener("input",fn); state[key]=e.value; }
+function bindSel(id,key,isInt=false){ const e=$(id); const fn=()=>{ state[key]=isInt?parseInt(e.value):e.value; render(); }; e.addEventListener("change",fn); state[key]=isInt?parseInt(e.value):e.value; }
+function bindChk(id,key){ const e=$(id); const fn=()=>{ state[key]=e.checked; render(); }; e.addEventListener("change",fn); state[key]=e.checked; }
 
-  const startOffset = firstWeekday(year, month, settings.firstDay);
-  const dim = daysInMonth(year, month);
+(function wire(){
+  // Language
+  bindSel("lang","lang"); bindChk("fullNames","fullNames");
 
-  // Build SVG
-  const svgns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgns, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.setAttribute("width", W);
-  svg.setAttribute("height", H);
-  svg.style.display = "block";
-  svg.style.background = "transparent";
+  // Preset sizes
+  bindSel("pagePreset","preset");
+  $("pagePreset").addEventListener("change", ()=>{
+    const p=$("pagePreset").value;
+    const map={A4P:[210,297],A4L:[297,210],A5P:[148,210],A5L:[210,148],B5P:[176,250],B5L:[250,176],B4P:[250,353],B4L:[353,250]};
+    if(map[p]){ $("pageW").value=map[p][0]; $("pageH").value=map[p][1]; state.pageW=map[p][0]; state.pageH=map[p][1]; render(); }
+  });
+  bindNum("pageW","pageW"); bindNum("pageH","pageH");
 
-  // Background board
-  const bg = document.createElementNS(svgns, "rect");
-  bg.setAttribute("x", 0); bg.setAttribute("y", 0);
-  bg.setAttribute("width", W); bg.setAttribute("height", H);
-  bg.setAttribute("rx", 12);
-  bg.setAttribute("fill", "none");
-  bg.setAttribute("stroke", "rgba(255,255,255,0.06)");
-  svg.appendChild(bg);
+  // Block
+  ["calX","calY","calW","calH"].forEach(k=>bindNum(k,k));
+  bindChk("showGuides","showGuides");
 
-  // Month title
-  const title = document.createElementNS(svgns, "text");
-  title.setAttribute("x", mLeft);
-  title.setAttribute("y", mTop);
-  title.setAttribute("font-family", settings.fontFamily);
-  title.setAttribute("font-size", settings.hdrSize);
-  title.setAttribute("dominant-baseline", "hanging");
-  title.setAttribute("fill", "white");
-  title.textContent = `${MONTH_NAMES[month]} ${year}`;
-  svg.appendChild(title);
+  // Month/locale
+  bindNum("year","year"); bindSel("month","month",true); bindSel("firstDay","firstDay",true);
+  const mt=$("monthTop"); mt.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join("");
+  mt.value=state.month; $("month").value=state.month;
+  mt.addEventListener("change",()=>{ state.month=parseInt(mt.value); $("month").value=state.month; render(); });
+  $("prevM").onclick=()=>{ state.month=(state.month+11)%12; mt.value=state.month; $("month").value=state.month; render(); };
+  $("nextM").onclick=()=>{ state.month=(state.month+1)%12; mt.value=state.month; $("month").value=state.month; render(); };
 
-  // Weekday header
-  const y0 = mTop + settings.hdrSize + hdrGap;
+  // Header
+  bindTxt("hdrText","hdrText"); bindTxt("hdrFont","hdrFont");
+  bindNum("hdrSize","hdrSizePt"); bindSel("hdrAlign","hdrAlign"); bindNum("hdrGap","hdrGap");
+
+  // Grid/cells
+  bindNum("cellStrokePt","cellStrokePt"); bindNum("cellRadius","cellRadius");
+  bindNum("gutX","gutX"); bindNum("gutY","gutY");
+  bindChk("tableLines","tableLines"); bindChk("hideEmpty","hideEmpty");
+  bindChk("showAdj","showAdj"); bindNum("adjAlpha","adjAlpha");
+
+  // Day numbers
+  bindTxt("dayFont","dayFont"); bindNum("daySizePt","daySizePt");
+  bindNum("dayOffX","dayOffX"); bindNum("dayOffY","dayOffY"); bindSel("dayAnchor","dayAnchor");
+
+  // Generate
+  $("generate").onclick=()=>openPreviewAndZip();
+})();
+
+/* ===== Rendering ===== */
+function buildMonthSVG(y,mIdx, {exportMode=false}={}){
+  const svgns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(svgns,"svg");
+  svg.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  svg.setAttribute("width", state.pageW+"mm");
+  svg.setAttribute("height", state.pageH+"mm");
+  svg.setAttribute("viewBox", `0 0 ${mm(state.pageW)} ${mm(state.pageH)}`);
+
+  // Page white background to avoid black fills in some viewers
+  const page=document.createElementNS(svgns,"rect");
+  page.setAttribute("x",0); page.setAttribute("y",0);
+  page.setAttribute("width",mm(state.pageW)); page.setAttribute("height",mm(state.pageH));
+  page.setAttribute("fill","#ffffff");
+  svg.appendChild(page);
+
+  // Calendar group
+  const g=document.createElementNS(svgns,"g");
+  g.setAttribute("transform", `translate(${mm(state.calX)}, ${mm(state.calY)})`);
+  svg.appendChild(g);
+
+  // Header
+  const months=langMonths();
+  const title=(state.hdrText||"").replace("{MONTH}", months[mIdx]).replace("{YEAR}", String(y));
+  const hdr=document.createElementNS(svgns,"text");
+  hdr.setAttribute("font-family", state.hdrFont);
+  hdr.setAttribute("font-size", ptToPx(state.hdrSizePt));
+  hdr.setAttribute("dominant-baseline","hanging");
+  hdr.setAttribute("fill","#000");
+  let tx=0, ta="start"; if (state.hdrAlign==="center"){ tx=mm(state.calW)/2; ta="middle"; } if (state.hdrAlign==="right"){ tx=mm(state.calW); ta="end"; }
+  hdr.setAttribute("x",tx); hdr.setAttribute("y",0); hdr.setAttribute("text-anchor",ta);
+  hdr.textContent=title; g.appendChild(hdr);
+
+  const hdrGapPx=mm(state.hdrGap);
+  const gridY0 = ptToPx(state.hdrSizePt) + hdrGapPx;
+
+  // Geometry
+  const cols=7, rows=6;
+  const gutX=mm(state.gutX), gutY=mm(state.gutY);
+  const gridW=mm(state.calW), gridH=mm(state.calH)-gridY0;
+  const cellW=(gridW - gutX*(cols-1)) / cols;
+  const cellH=(gridH - gutY*(rows-1)) / rows;
+
+  // Weekday row
+  const dnames = langWeekdays();
   dnames.forEach((d,i)=>{
-    const tx = mLeft + i*(cellW+gutterX) + cellW/2;
-    const t = document.createElementNS(svgns, "text");
-    t.setAttribute("x", tx);
-    t.setAttribute("y", y0- (gutterY>2?gutterY/2:2));
-    t.setAttribute("font-family", settings.fontFamily);
-    t.setAttribute("font-size", 12);
-    t.setAttribute("text-anchor", "middle");
-    t.setAttribute("fill", "rgba(255,255,255,0.75)");
-    t.textContent = d;
-    svg.appendChild(t);
+    const t=document.createElementNS(svgns,"text");
+    t.setAttribute("x", i*(cellW+gutX)+cellW/2);
+    t.setAttribute("y", gridY0 - (gutY>2?gutY/2:2));
+    t.setAttribute("font-family", state.dayFont);
+    t.setAttribute("font-size", ptToPx( state.fullNames? 9.5 : 8 ));
+    t.setAttribute("fill","#333");
+    t.setAttribute("text-anchor","middle");
+    t.textContent=d;
+    g.appendChild(t);
   });
 
-  // Grid cells + day numbers
-  const gridY = y0;
-  const stroke = settings.stroke;
-  const r = settings.radius;
+  // Month math
+  const startOff = firstWeekday(y,mIdx,state.firstDay);
+  const days = daysInMonth(y,mIdx);
+  // Adjacent month numbers
+  const prevMonth = (mIdx+11)%12;
+  const nextMonth = (mIdx+1)%12;
+  const daysPrev = daysInMonth(y - (mIdx===0?1:0), prevMonth);
 
-  let day = 1;
-  for (let rIdx=0; rIdx<rows; rIdx++){
+  let n=1, trailing=1;
+
+  // Table lines mode
+  if (state.tableLines){
+    // Outer border
+    const border=document.createElementNS(svgns,"rect");
+    border.setAttribute("x",0); border.setAttribute("y",gridY0);
+    border.setAttribute("width",gridW); border.setAttribute("height",gridH);
+    border.setAttribute("fill","none");
+    border.setAttribute("stroke","#000");
+    border.setAttribute("stroke-width", ptToPx(state.cellStrokePt));
+    g.appendChild(border);
+    // Vertical dividers
+    for (let c=1;c<cols;c++){
+      const x=c*(cellW+gutX)-gutX/2;
+      const line=document.createElementNS(svgns,"line");
+      line.setAttribute("x1",x); line.setAttribute("y1",gridY0);
+      line.setAttribute("x2",x); line.setAttribute("y2",gridY0+gridH);
+      line.setAttribute("stroke","#000"); line.setAttribute("stroke-width", ptToPx(state.cellStrokePt));
+      g.appendChild(line);
+    }
+    // Horizontal dividers
+    for (let r=1;r<rows;r++){
+      const y=gridY0 + r*(cellH+gutY) - gutY/2;
+      const line=document.createElementNS(svgns,"line");
+      line.setAttribute("x1",0); line.setAttribute("y1",y);
+      line.setAttribute("x2",gridW); line.setAttribute("y2",y);
+      line.setAttribute("stroke","#000"); line.setAttribute("stroke-width", ptToPx(state.cellStrokePt));
+      g.appendChild(line);
+    }
+  }
+
+  for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const idx = rIdx*cols + c;
-      const isActive = (idx >= startOffset) && (day <= dim);
-      const x = mLeft + c*(cellW+gutterX);
-      const y = gridY + rIdx*(cellH+gutterY);
+      const idx = r*cols+c;
+      const x=c*(cellW+gutX), y=gridY0 + r*(cellH+gutY);
 
-      const cell = document.createElementNS(svgns, "rect");
-      cell.setAttribute("x", x); cell.setAttribute("y", y);
-      cell.setAttribute("width", cellW); cell.setAttribute("height", cellH);
-      cell.setAttribute("rx", r);
-      cell.setAttribute("fill", isActive ? "rgba(255,255,255,0.02)" : "transparent");
-      cell.setAttribute("stroke", "rgba(255,255,255,0.10)");
-      cell.setAttribute("stroke-width", stroke);
-      svg.appendChild(cell);
+      let isActive=false, label="", isAdj=false, adjFromPrev=false;
+      if (idx<startOff){ // leading cells
+        if (state.hideEmpty && !state.showAdj) continue;
+        if (state.showAdj){ label = String(daysPrev - (startOff-1 - idx)); isAdj=true; adjFromPrev=true; }
+      } else if (n<=days){ // current month
+        isActive=true; label=String(n++);
+      } else { // trailing cells
+        if (state.hideEmpty && !state.showAdj) continue;
+        if (state.showAdj){ label=String(trailing++); isAdj=true; }
+      }
 
-      if (isActive){
-        const dn = document.createElementNS(svgns, "text");
-        dn.setAttribute("x", x + cellW - 6);
-        dn.setAttribute("y", y + 6);
-        dn.setAttribute("font-family", settings.fontFamily);
-        dn.setAttribute("font-size", settings.daySize);
-        dn.setAttribute("fill", "white");
-        dn.setAttribute("text-anchor", "end");
-        dn.setAttribute("dominant-baseline", "hanging");
-        dn.textContent = day;
-        svg.appendChild(dn);
-        day++;
+      // draw cell background only if not tableLines
+      if (!state.tableLines){
+        const rect=document.createElementNS(svgns,"rect");
+        rect.setAttribute("x",x); rect.setAttribute("y",y);
+        rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+        rect.setAttribute("rx", mm(state.cellRadius));
+        rect.setAttribute("fill", isActive? "#ffffff" : "#f6f6f6");
+        rect.setAttribute("stroke", state.cellStrokePt>0? "#000":"none");
+        rect.setAttribute("stroke-width", ptToPx(state.cellStrokePt));
+        g.appendChild(rect);
+      }
+
+      if (label){
+        const dn=document.createElementNS(svgns,"text");
+        dn.setAttribute("font-family", state.dayFont);
+        dn.setAttribute("font-size", ptToPx(state.daySizePt));
+        dn.setAttribute("fill", isAdj? `rgba(0,0,0,${clamp(state.adjAlpha,10,90)/100})` : "#000");
+        let ax,ay; const dx=mm(state.dayOffX), dy=mm(state.dayOffY);
+        const anch=state.dayAnchor;
+        if (anch==="top-right"){ ax=x+cellW+dx; ay=y+dy; dn.setAttribute("text-anchor","end"); dn.setAttribute("dominant-baseline","hanging"); }
+        else if (anch==="top-left"){ ax=x+dx; ay=y+dy; dn.setAttribute("text-anchor","start"); dn.setAttribute("dominant-baseline","hanging"); }
+        else if (anch==="center"){ ax=x+cellW/2+dx; ay=y+cellH/2+dy; dn.setAttribute("text-anchor","middle"); dn.setAttribute("dominant-baseline","middle"); }
+        else { ax=x+cellW+dx; ay=y+cellH+dy; dn.setAttribute("text-anchor","end"); dn.setAttribute("dominant-baseline","ideographic"); }
+        dn.setAttribute("x",ax); dn.setAttribute("y",ay);
+        dn.textContent=label;
+        g.appendChild(dn);
       }
     }
   }
-  return svg;
-}
 
-// --- Export logic ---
-function attachExports(){
-  gridEl.querySelectorAll("button[data-export]").forEach(btn=>{
-    btn.onclick = ()=>{
-      const m = +btn.dataset.export;
-      const card = btn.closest(".card");
-      const svg = card.querySelector("svg");
-      const content = serializeSVG(svg);
-      const blob = new Blob([content], {type:"image/svg+xml;charset=utf-8"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${MONTH_NAMES[m]}_${settings.year}.svg`;
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    };
-  });
-}
-function serializeSVG(svg){
-  const pre = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n`;
-  const cloned = svg.cloneNode(true);
-  // Ensure inline fonts and colors remain; viewBox already set.
-  return pre + new XMLSerializer().serializeToString(cloned);
-}
-
-// --- Draggable guides (apply to all months) ---
-let activeGuide = null;
-function attachGuides(){
-  // One overlay per card (keeps labels local)
-  gridEl.querySelectorAll(".card").forEach(card=>{
-    const svg = card.querySelector("svg");
-    // Clear previous guides if any
-    card.querySelectorAll(".guide, .guide-label").forEach(el=>el.remove());
-
-    const {W,H,mTop,mLeft,mRight,mBottom,gutterX,gutterY,hdrGap} = layout;
-    const cols=7, rows=6;
-    const innerW = W - mLeft - mRight;
+  // Cyan draggable overlay (preview only)
+  if (state.showGuides && !exportMode){
+    const overlay=document.createElementNS(svgns,"g");
+    overlay.setAttribute("data-overlay","1");
+    overlay.setAttribute("transform", `translate(${mm(state.calX)}, ${mm(state.calY)})`);
+    const r=document.createElementNS(svgns,"rect");
+    r.setAttribute("x",-mm(state.calX)); r.setAttribute("y",-mm(state.calY)); // page-relative, we’ll reposition via JS
+    r.setAttribute("width",mm(state.calW)); r.setAttribute("height",mm(state.calH));
+    r.removeAttribute("x"); r.removeAttribute("y"); // ensure only transform affects position
+    r.setAttribute("class","guionst innerW = W - mLeft - mRight;
     const innerH = H - mTop - mBottom - settings.hdrSize - hdrGap;
     const cellW = (innerW - gutterX*(cols-1)) / cols;
     const cellH = (innerH - gutterY*(rows-1)) / rows;
