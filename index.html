@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Calendar Template Lab — SVG</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg:#0e0f11; --fg:#e7e7e7; --muted:#a3a3a3; --accent:#4da3ff; --grid:#26282c; --guide:#6bf;
+  }
+  html,body { height:100%; margin:0; background:var(--bg); color:var(--fg); font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  header { position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(6px); background:#0e0f11cc; border-bottom:1px solid #1a1c20; }
+  .bar { display:flex; gap:.75rem; align-items:center; padding:.6rem .9rem; flex-wrap:wrap; }
+  .bar label { color:var(--muted); font-size:.9rem; }
+  .bar input, .bar select { background:#14161a; color:var(--fg); border:1px solid #24262b; border-radius:.5rem; padding:.3rem .5rem; }
+  .wrap { padding:1rem; display:grid; grid-template-columns:repeat(3, 1fr); gap:1rem; }
+  .card { background:#111317; border:1px solid #1a1c20; border-radius:.8rem; padding:.6rem; position:relative; }
+  .title { display:flex; justify-content:space-between; align-items:center; color:var(--muted); margin:.2rem 0 .5rem; }
+  button { background:#151922; color:var(--fg); border:1px solid #2a2f39; border-radius:.6rem; padding:.35rem .6rem; cursor:pointer; }
+  button:active { transform:translateY(1px); }
+  .guide-label { position:absolute; background:#0b2340; color:#bfe1ff; border:1px solid #1e4772; padding:2px 6px; border-radius:.4rem; font-size:.78rem; pointer-events:none; white-space:nowrap; }
+  .muted { color:var(--muted); }
+  .small { font-size:.85rem; }
+  .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  .tip { color:#9fb8ff; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="row">
+      <label>Year</label>
+      <input id="year" type="number" min="1600" max="4000" value="2026" />
+      <label>First day</label>
+      <select id="firstDay">
+        <option value="0">Sunday</option>
+        <option value="1">Monday</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Font</label>
+      <input id="fontFamily" type="text" value="Inter, system-ui, Arial" size="24"/>
+      <label>Header size</label>
+      <input id="hdrSize" type="number" value="20" min="8" max="64" />
+      <label>Day size</label>
+      <input id="daySize" type="number" value="14" min="8" max="40" />
+      <label>Stroke</label>
+      <input id="stroke" type="number" value="1" step="0.5" min="0" max="4" />
+      <label>Radius</label>
+      <input id="radius" type="number" value="8" min="0" max="30" />
+    </div>
+    <div class="row">
+      <span class="small muted">Drag the cyan guides: top margin, left margin, column gutter, row gutter. Changes apply to all months.</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="grid"></main>
+
+<script>
+/* ===========================
+   “Coder” brain: implementation
+   =========================== */
+
+// --- Calendar math (Gregorian) ---
+function isLeap(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
+function daysInMonth(y,m){ return [31, isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m]; }
+function firstWeekday(y,m, firstDay) {
+  // JS Date: 0=Sun..6=Sat; adjust so firstDay=0 means Sunday or Monday etc.
+  const d = new Date(y, m, 1).getDay();
+  // shift so that return 0 = firstDay
+  return (d - firstDay + 7) % 7;
+}
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+function weekdayNames(firstDay) {
+  const base = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return base.slice(firstDay).concat(base.slice(0, firstDay));
+}
+
+// --- Global shared layout state (draggable guides control these) ---
+const layout = {
+  W: 360, H: 300,       // month board size (inner SVG viewBox)
+  mTop: 48, mLeft: 24,  // inner margins
+  mRight: 24, mBottom: 28,
+  gutterX: 6, gutterY: 6,
+  hdrGap: 10,           // header to grid gap
+};
+
+// Settings bound to UI controls
+const settings = {
+  year: 2026,
+  firstDay: 0, // 0 Sunday, 1 Monday
+  fontFamily: "Inter, system-ui, Arial",
+  hdrSize: 20,
+  daySize: 14,
+  stroke: 1,
+  radius: 8
+};
+
+// --- DOM helpers ---
+const $ = sel => document.querySelector(sel);
+const gridEl = $("#grid");
+
+// --- Build 12 month cards ---
+function renderAll() {
+  gridEl.innerHTML = "";
+  const dnames = weekdayNames(settings.firstDay);
+  for (let m=0;m<12;m++){
+    const card = document.createElement("div");
+    card.className = "card";
+    const head = document.createElement("div");
+    head.className = "title";
+    head.innerHTML = `<strong>${MONTH_NAMES[m]} ${settings.year}</strong>
+      <span class="muted small mono">Export:
+        <button data-export="${m}">SVG</button>
+      </span>`;
+    card.appendChild(head);
+    const svg = renderMonthSVG(settings.year, m, dnames);
+    svg.dataset.month = m;
+    card.appendChild(svg);
+    gridEl.appendChild(card);
+  }
+  attachExports();
+  attachGuides(); // set once (absolute overlays per-card)
+}
+
+// --- Per-month SVG render ---
+function renderMonthSVG(year, month, dnames){
+  const {W,H,mTop,mLeft,mRight,mBottom,gutterX,gutterY,hdrGap} = layout;
+  const cols = 7, rows = 6;
+  const innerW = W - mLeft - mRight;
+  const innerH = H - mTop - mBottom - settings.hdrSize - hdrGap;
+  const cellW = (innerW - gutterX*(cols-1)) / cols;
+  const cellH = (innerH - gutterY*(rows-1)) / rows;
+
+  const startOffset = firstWeekday(year, month, settings.firstDay);
+  const dim = daysInMonth(year, month);
+
+  // Build SVG
+  const svgns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  svg.style.display = "block";
+  svg.style.background = "transparent";
+
+  // Background board
+  const bg = document.createElementNS(svgns, "rect");
+  bg.setAttribute("x", 0); bg.setAttribute("y", 0);
+  bg.setAttribute("width", W); bg.setAttribute("height", H);
+  bg.setAttribute("rx", 12);
+  bg.setAttribute("fill", "none");
+  bg.setAttribute("stroke", "rgba(255,255,255,0.06)");
+  svg.appendChild(bg);
+
+  // Month title
+  const title = document.createElementNS(svgns, "text");
+  title.setAttribute("x", mLeft);
+  title.setAttribute("y", mTop);
+  title.setAttribute("font-family", settings.fontFamily);
+  title.setAttribute("font-size", settings.hdrSize);
+  title.setAttribute("dominant-baseline", "hanging");
+  title.setAttribute("fill", "white");
+  title.textContent = `${MONTH_NAMES[month]} ${year}`;
+  svg.appendChild(title);
+
+  // Weekday header
+  const y0 = mTop + settings.hdrSize + hdrGap;
+  dnames.forEach((d,i)=>{
+    const tx = mLeft + i*(cellW+gutterX) + cellW/2;
+    const t = document.createElementNS(svgns, "text");
+    t.setAttribute("x", tx);
+    t.setAttribute("y", y0- (gutterY>2?gutterY/2:2));
+    t.setAttribute("font-family", settings.fontFamily);
+    t.setAttribute("font-size", 12);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("fill", "rgba(255,255,255,0.75)");
+    t.textContent = d;
+    svg.appendChild(t);
+  });
+
+  // Grid cells + day numbers
+  const gridY = y0;
+  const stroke = settings.stroke;
+  const r = settings.radius;
+
+  let day = 1;
+  for (let rIdx=0; rIdx<rows; rIdx++){
+    for (let c=0;c<cols;c++){
+      const idx = rIdx*cols + c;
+      const isActive = (idx >= startOffset) && (day <= dim);
+      const x = mLeft + c*(cellW+gutterX);
+      const y = gridY + rIdx*(cellH+gutterY);
+
+      const cell = document.createElementNS(svgns, "rect");
+      cell.setAttribute("x", x); cell.setAttribute("y", y);
+      cell.setAttribute("width", cellW); cell.setAttribute("height", cellH);
+      cell.setAttribute("rx", r);
+      cell.setAttribute("fill", isActive ? "rgba(255,255,255,0.02)" : "transparent");
+      cell.setAttribute("stroke", "rgba(255,255,255,0.10)");
+      cell.setAttribute("stroke-width", stroke);
+      svg.appendChild(cell);
+
+      if (isActive){
+        const dn = document.createElementNS(svgns, "text");
+        dn.setAttribute("x", x + cellW - 6);
+        dn.setAttribute("y", y + 6);
+        dn.setAttribute("font-family", settings.fontFamily);
+        dn.setAttribute("font-size", settings.daySize);
+        dn.setAttribute("fill", "white");
+        dn.setAttribute("text-anchor", "end");
+        dn.setAttribute("dominant-baseline", "hanging");
+        dn.textContent = day;
+        svg.appendChild(dn);
+        day++;
+      }
+    }
+  }
+  return svg;
+}
+
+// --- Export logic ---
+function attachExports(){
+  gridEl.querySelectorAll("button[data-export]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const m = +btn.dataset.export;
+      const card = btn.closest(".card");
+      const svg = card.querySelector("svg");
+      const content = serializeSVG(svg);
+      const blob = new Blob([content], {type:"image/svg+xml;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${MONTH_NAMES[m]}_${settings.year}.svg`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    };
+  });
+}
+function serializeSVG(svg){
+  const pre = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n`;
+  const cloned = svg.cloneNode(true);
+  // Ensure inline fonts and colors remain; viewBox already set.
+  return pre + new XMLSerializer().serializeToString(cloned);
+}
+
+// --- Draggable guides (apply to all months) ---
+let activeGuide = null;
+function attachGuides(){
+  // One overlay per card (keeps labels local)
+  gridEl.querySelectorAll(".card").forEach(card=>{
+    const svg = card.querySelector("svg");
+    // Clear previous guides if any
+    card.querySelectorAll(".guide, .guide-label").forEach(el=>el.remove());
+
+    const {W,H,mTop,mLeft,mRight,mBottom,gutterX,gutterY,hdrGap} = layout;
+    const cols=7, rows=6;
+    const innerW = W - mLeft - mRight;
+    const innerH = H - mTop - mBottom - settings.hdrSize - hdrGap;
+    const cellW = (innerW - gutterX*(cols-1)) / cols;
+    const cellH = (innerH - gutterY*(rows-1)) / rows;
+    const gridY = mTop + settings.hdrSize + hdrGap;
+
+    function mkGuideLine(x1,y1,x2,y2, key){
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1",x1); line.setAttribute("y1",y1);
+      line.setAttribute("x2",x2); line.setAttribute("y2",y2);
+      line.setAttribute("stroke","var(--guide)");
+      line.setAttribute("stroke-width","2.5");
+      line.setAttribute("opacity","0.9");
+      line.classList.add("guide");
+      line.style.cursor = (key==='mTop' || key==='row') ? "ns-resize" : "ew-resize";
+      line.addEventListener("pointerdown", (e)=>{ activeGuide = {key, startX:e.clientX, startY:e.clientY}; e.target.setPointerCapture(e.pointerId); });
+      line.addEventListener("pointermove", (e)=>{
+        if (!activeGuide) return;
+        if (activeGuide.key !== key) return;
+        const dy = e.clientY - activeGuide.startY;
+        const dx = e.clientX - activeGuide.startX;
+
+        // Update shared layout with clamped values
+        if (key==='mTop'){
+          layout.mTop = clamp(mTop + dy, 10, H*0.4);
+        } else if (key==='mLeft'){
+          layout.mLeft = clamp(mLeft + dx, 8, W*0.4);
+        } else if (key==='col'){ // gutterX
+          layout.gutterX = clamp(gutterX + dx*0.05, 0, 30);
+        } else if (key==='row'){ // gutterY
+          layout.gutterY = clamp(gutterY + dy*0.05, 0, 30);
+        }
+        renderAll(); // propagate to all months
+      });
+      line.addEventListener("pointerup", ()=>{ activeGuide = null; });
+      svg.appendChild(line);
+
+      // Label
+      const lbl = document.createElement("div");
+      lbl.className = "guide-label";
+      lbl.textContent = labelText(key);
+      card.appendChild(lbl);
+      // Position label near the line
+      const rect = svg.getBoundingClientRect();
+      positionLabel(lbl, rect, x1,y1,x2,y2);
+    }
+
+    // Top margin guide
+    mkGuideLine(8, mTop, W-8, mTop, 'mTop');
+    // Left margin guide
+    mkGuideLine(mLeft, 8, mLeft, H-8, 'mLeft');
+    // Column gutter guide (between col0 and col1)
+    mkGuideLine(mLeft + cellW + gutterX/2, gridY, mLeft + cellW + gutterX/2, gridY + rows*cellH + (rows-1)*gutterY, 'col');
+    // Row gutter guide (between row0 and row1)
+    mkGuideLine(mLeft, gridY + cellH + gutterY/2, mLeft + cols*cellW + (cols-1)*gutterX, gridY + cellH + gutterY/2, 'row');
+  });
+}
+function labelText(key){
+  if (key==='mTop') return `Top margin: ${layout.mTop.toFixed(0)}px`;
+  if (key==='mLeft') return `Left margin: ${layout.mLeft.toFixed(0)}px`;
+  if (key==='col') return `Column gutter: ${layout.gutterX.toFixed(1)}px`;
+  if (key==='row') return `Row gutter: ${layout.gutterY.toFixed(1)}px`;
+  return key;
+}
+function positionLabel(lbl, rect, x1,y1,x2,y2){
+  // Place near the center of the line
+  const cx = (x1+x2)/2, cy = (y1+y2)/2;
+  lbl.style.left = `${rect.left + window.scrollX + cx + 8}px`;
+  lbl.style.top  = `${rect.top  + window.scrollY + cy + 8}px`;
+}
+
+// --- Clamp ---
+function clamp(v,min,max){ return Math.min(max, Math.max(min, v)); }
+
+// --- Hook up controls ---
+function wireUI(){
+  const bindings = [
+    ["#year", "year", parseInt],
+    ["#firstDay","firstDay", parseInt],
+    ["#fontFamily","fontFamily", v=>v],
+    ["#hdrSize","hdrSize", v=>parseFloat(v)||20],
+    ["#daySize","daySize", v=>parseFloat(v)||14],
+    ["#stroke","stroke", v=>parseFloat(v)||1],
+    ["#radius","radius", v=>parseFloat(v)||8],
+  ];
+  bindings.forEach(([sel,key,cast])=>{
+    const el = $(sel);
+    el.value = settings[key];
+    el.addEventListener("input", ()=>{
+      settings[key] = cast(el.value);
+      renderAll();
+    });
+  });
+}
+
+// --- Init ---
+(function init(){
+  wireUI();
+  // seed with current year in local timezone
+  const now = new Date();
+  settings.year = now.getFullYear();
+  $("#year").value = settings.year;
+  renderAll();
+})();
+</script>
+</body>
+</html>
