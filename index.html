@@ -164,18 +164,16 @@ function isLeap(y){return(y%4===0&&y%100!==0)||(y%400===0)}
 function daysInMonth(y,m){return[31,isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m]}
 function firstWeekday(y,m,f){const d=new Date(y,m,1).getDay();return(d-f+7)%7}
 
-/* ===== language data (ASCII-safe) ===== */
+/* ===== language ===== */
 const MONTH_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
-const MONTH_CZ=["Leden","Unor","Brezen","Duben","Kveten","Cerven","Cervenec","Srpen","Zari","Rijen","Listopad","Prosinec"]; // ASCII-friendly spellings
-const MONTH_JA=["1\u6708","2\u6708","3\u6708","4\u6708","5\u6708","6\u6708","7\u6708","8\u6708","9\u6708","10\u6708","11\u6708","12\u6708"];
+const MONTH_CZ=["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
+const MONTH_JA=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 const WD_EN_S=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], WD_EN_F=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const WD_CZ_S=["Ne","Po","Ut","St","Ct","Pa","So"],       WD_CZ_F=["Nedele","Pondeli","Utery","Streda","Ctvrtek","Patek","Sobota"]; // ASCII-friendly
-const WD_JA_S=["\u65e5","\u6708","\u706b","\u6c34","\u6728","\u91d1","\u571f"], WD_JA_F=["\u65e5\u66dc\u65e5","\u6708\u66dc\u65e5","\u706b\u66dc\u65e5","\u6c34\u66dc\u65e5","\u6728\u66dc\u65e5","\u91d1\u66dc\u65e5","\u571f\u66dc\u65e5"];
-
+const WD_CZ_S=["Ne","Po","Út","St","Čt","Pá","So"],       WD_CZ_F=["Neděle","Pondělí","Úterý","Středa","Čtvrtek","Pátek","Sobota"];
+const WD_JA_S=["日","月","火","水","木","金","土"],         WD_JA_F=["日曜日","月曜日","火曜日","水曜日","木曜日","金曜日","土曜日"];
 function monthsByLang(lang){return lang==="ENG"?MONTH_EN:lang==="CZE"?MONTH_CZ:MONTH_JA}
 function weekdaysByLang(lang,full){
-  const base=lang==="ENG"?(full?WD_EN_F:WD_EN_S):lang==="CZE"?(full?WD_CZ_F:WD_CZ_S):(full?WD_JA_F:WD_JA_S);
-  return base.slice(); // copy
+  return (lang==="ENG"?(full?WD_EN_F:WD_EN_S):lang==="CZE"?(full?WD_CZ_F:WD_CZ_S):(full?WD_JA_F:WD_JA_S)).slice();
 }
 
 /* ===== state ===== */
@@ -289,8 +287,7 @@ function buildMonthSVG(y,mIdx,{exportMode}){
 
   const startOff=firstWeekday(y,mIdx,state.firstDay);
   const days=daysInMonth(y,mIdx);
-  const prevMonth=(mIdx+11)%12, nextMonth=(mIdx+1)%12;
-  const daysPrev=daysInMonth(y-(mIdx===0?1:0),prevMonth);
+  const daysPrev=daysInMonth(y-(mIdx===0?1:0),(mIdx+11)%12);
   let n=1,trailing=1;
 
   if(state.tableLines){
@@ -351,17 +348,25 @@ function buildMonthSVG(y,mIdx,{exportMode}){
   if(state.showGuides && !exportMode){
     const ov=document.createElementNS(svgns,"g");
     ov.setAttribute("transform","translate("+mm(state.calX)+","+mm(state.calY)+")");
+
+    /* big transparent hit-rect so you can drag from anywhere */
+    const hit=document.createElementNS(svgns,"rect");
+    hit.setAttribute("x",-mm(4)); hit.setAttribute("y",-mm(4));
+    hit.setAttribute("width",mm(state.calW)+mm(8)); hit.setAttribute("height",mm(state.calH)+mm(8));
+    hit.setAttribute("fill","rgba(0,0,0,0)"); hit.style.cursor="move"; hit.dataset.role="move";
+    ov.appendChild(hit);
+
+    /* visible dashed rect */
     const moveRect=document.createElementNS(svgns,"rect");
     moveRect.setAttribute("x",0);moveRect.setAttribute("y",0);
     moveRect.setAttribute("width",mm(state.calW));moveRect.setAttribute("height",mm(state.calH));
     moveRect.setAttribute("class","guide"); moveRect.dataset.role="move"; moveRect.style.cursor="move";
     ov.appendChild(moveRect);
+
     const size=mm(4.5);
-    const pos=[
-      ["nw",0,0],["n",mm(state.calW)/2,0],["ne",mm(state.calW),0],
+    const pos=[["nw",0,0],["n",mm(state.calW)/2,0],["ne",mm(state.calW),0],
       ["w",0,mm(state.calH)/2],["e",mm(state.calW),mm(state.calH)/2],
-      ["sw",0,mm(state.calH)],["s",mm(state.calW)/2,mm(state.calH)],["se",mm(state.calW),mm(state.calH)]
-    ];
+      ["sw",0,mm(state.calH)],["s",mm(state.calW)/2,mm(state.calH)],["se",mm(state.calW),mm(state.calH)]];
     for(let i=0;i<pos.length;i++){
       const p=pos[i], h=document.createElementNS(svgns,"rect");
       h.setAttribute("x",p[1]-size/2); h.setAttribute("y",p[2]-size/2);
@@ -389,13 +394,13 @@ function render(){
 /* dragging */
 function wireDrag(svg,ov){
   let active=null;
-  svg.addEventListener("pointerdown",function(e){
+  const onDown=(e)=>{
     const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
     e.preventDefault(); svg.setPointerCapture(e.pointerId);
     active={role:role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
     hud.style.display="block";
-  });
-  svg.addEventListener("pointermove",function(e){
+  };
+  const onMove=(e)=>{
     if(!active)return;
     const dxmm=(e.clientX-active.mx)/PX_PER_MM, dymm=(e.clientY-active.my)/PX_PER_MM;
     let x=active.start.x, y=active.start.y, w=active.start.w, h=active.start.h;
@@ -415,7 +420,7 @@ function wireDrag(svg,ov){
     $("calX").value=state.calX; $("calY").value=state.calY; $("calW").value=state.calW; $("calH").value=state.calH;
 
     ov.setAttribute("transform","translate("+mm(state.calX)+","+mm(state.calY)+")");
-    const mover=ov.querySelector('rect[data-role="move"]');
+    const mover=ov.querySelector('rect.guide');
     mover.setAttribute("width",mm(state.calW)); mover.setAttribute("height",mm(state.calH));
     const wpx=mm(state.calW), hpx=mm(state.calH), size=mm(4.5);
     const handles=ov.querySelectorAll('.handle');
@@ -432,40 +437,64 @@ function wireDrag(svg,ov){
     hud.textContent="X:"+state.calX+" Y:"+state.calY+"  W:"+state.calW+" H:"+state.calH+" mm";
     hud.style.left=(e.clientX - vb.left + previewHost.scrollLeft + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + previewHost.scrollTop  + 12)+"px";
-  });
-  svg.addEventListener("pointerup",function(){active=null;hud.style.display="none";render()});
+  };
+  const onUp=()=>{active=null;hud.style.display="none";render()};
+
+  /* listen on the overlay group so both hit-rect and guide rect work */
+  ov.addEventListener("pointerdown",onDown);
+  svg.addEventListener("pointermove",onMove);
+  svg.addEventListener("pointerup",onUp);
 }
 
-/* export / preview tab + ZIP (remote JSZip) */
+/* export / preview tab + ZIP via DOM (no document.write) */
 function serializeSVG(svg){return'<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(svg)}
 function buildSVGString(y,m){return serializeSVG(buildMonthSVG(y,m,{exportMode:true}))}
 
 function openPreviewAndZip(){
   const w=window.open("","_blank"); if(!w){alert("Popup blocked.");return}
-  const styles='body{font:14px/1.3 system-ui;background:#111;color:#eee;margin:0}'
+  w.document.title="Calendar "+state.year+" — Preview";
+  const style=w.document.createElement("style");
+  style.textContent='body{font:14px/1.3 system-ui;background:#111;color:#eee;margin:0}'
     +'.bar{position:sticky;top:0;background:#111;padding:10px;border-bottom:1px solid #333;display:flex;gap:8px;align-items:center}'
     +'button{background:#1b2a45;color:#fff;border:1px solid #2e4a7a;border-radius:6px;padding:6px 10px;cursor:pointer}'
     +'.wrap{padding:10px 12px}.page{background:#fff;margin:12px auto;box-shadow:0 2px 12px rgba(0,0,0,.35);border:1px solid #ddd}';
-  w.document.write('<html><head><meta charset="utf-8"><title>Calendar '+state.year+' — Preview</title>'
-    +'<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"><\/script>'
-    +'<style>'+styles+'</style></head><body>'
-    +'<div class="bar"><button id="dl">Download ZIP (12 SVG)</button></div><div class="wrap" id="wrap"></div></body></html>');
-  w.document.close();
-  const wrap=w.document.getElementById("wrap");
+  w.document.head.appendChild(style);
+
+  const bar=w.document.createElement("div"); bar.className="bar";
+  const btn=w.document.createElement("button"); btn.id="dl"; btn.textContent="Download ZIP (12 SVG)";
+  bar.appendChild(btn); w.document.body.appendChild(bar);
+  const wrap=w.document.createElement("div"); wrap.className="wrap"; wrap.id="wrap"; w.document.body.appendChild(wrap);
+
+  // render pages immediately
   for(let m=0;m<12;m++){
     const svgStr=buildSVGString(state.year,m);
     const div=w.document.createElement("div");
     div.className="page"; div.style.width=(state.pageW*3)+"px";
-    div.innerHTML=svgStr; wrap.appendChild(div);
+    div.innerHTML=svgStr;
+    wrap.appendChild(div);
   }
-  w.document.getElementById("dl").onclick=async function(){
-    const zip=new w.JSZip();
-    const months=monthsByLang(state.lang);
-    for(let m=0;m<12;m++){ zip.file(String(m+1).padStart(2,"0")+'_'+months[m]+'_'+state.year+'.svg', buildSVGString(state.year,m)); }
-    const blob=await zip.generateAsync({type:"blob"}); const url=w.URL.createObjectURL(blob);
-    const a=w.document.createElement("a"); a.href=url; a.download='Calendar_'+state.year+'.zip';
-    w.document.body.appendChild(a); a.click(); a.remove(); w.URL.revokeObjectURL(url);
+
+  // inject JSZip via script tag, then wire click
+  const script=w.document.createElement("script");
+  script.src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js";
+  script.onload=()=>{
+    btn.onclick=async ()=>{
+      const zip=new w.JSZip();
+      const months=monthsByLang(state.lang);
+      for(let m=0;m<12;m++){
+        zip.file(String(m+1).padStart(2,"0")+'_'+months[m]+'_'+state.year+'.svg', buildSVGString(state.year,m));
+      }
+      const blob=await zip.generateAsync({type:"blob"});
+      const url=w.URL.createObjectURL(blob);
+      const a=w.document.createElement("a"); a.href=url; a.download='Calendar_'+state.year+'.zip';
+      w.document.body.appendChild(a); a.click(); a.remove(); w.URL.revokeObjectURL(url);
+    };
   };
+  script.onerror=()=>{
+    btn.disabled=true;
+    btn.textContent="ZIP unavailable (CDN blocked)";
+  };
+  w.document.head.appendChild(script);
 }
 
 /* go */
