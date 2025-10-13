@@ -2,14 +2,25 @@
   --bg:#0f1115; --fg:#e8e8e8; --muted:#a6a6a6; --panel:#13161c; --line:#262a33;
   --accent:#5aa9ff; --guide:#78d1ff; --hud:#ffe16b;
   --sidebar-w:360px; --sidebar-min:260px; --sidebar-max:640px;
+  --ui-scale:1; /* zoom for settings pane */
 }
+
 *{box-sizing:border-box}
 html,body{height:100%;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0}
 .app{display:grid;grid-template-columns:var(--sidebar-w) 6px 1fr;min-height:100vh}
 .scroll{overflow:auto}
 
+/* stop scroll chaining so each pane scrolls on its own */
+.settings,
+.preview { overscroll-behavior: contain; }
+
 /* left */
 .settings{background:var(--panel);border-right:1px solid var(--line);padding:10px 12px}
+.settings-inner{
+  transform: scale(var(--ui-scale));
+  transform-origin: left top;
+  width: calc(100% / var(--ui-scale)); /* compensate so content still fills */
+}
 h2{font-size:13px;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.06em}
 .row{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
 label{min-width:120px;color:var(--muted);font-size:12px}

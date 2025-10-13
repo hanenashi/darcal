@@ -1,5 +1,5 @@
 /* ========== helpers ========== */
-const PX_PER_MM = 96/25.4, mm = v=>v*PX_PER_MM, ptToPx = pt=>pt*(96/72);
+const PX_PER_MM = 96/25.4, mm=v=>v*PX_PER_MM, ptToPx=pt=>pt*(96/72);
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x)), r1=v=>Math.round(v*10)/10;
 const $=id=>document.getElementById(id);
 
@@ -32,11 +32,20 @@ const state={
 
 let previewHost, hud;
 
-/* ========== safe binding ========== */
+/* ========== safe bind helpers ========== */
 function bindNum(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=parseFloat(e.value)||0; render(); }; e.addEventListener("input",fn); state[key]=parseFloat(e.value)||state[key]; }
 function bindTxt(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=e.value; render(); }; e.addEventListener("input",fn); state[key]=e.value; }
 function bindSel(id,key,intMode=false){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=intMode?parseInt(e.value):e.value; render(); }; e.addEventListener("change",fn); state[key]=intMode?parseInt(e.value):e.value; }
 function bindChk(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=e.checked; render(); }; e.addEventListener("change",fn); state[key]=e.checked; }
+
+/* ========== settings zoom based on sidebar width ========== */
+function updateScaleFromWidth(wPx){
+  const base = 360;          // “comfy” baseline width
+  const minS = 0.85;
+  const maxS = 1.20;
+  const s = clamp(wPx / base, minS, maxS);
+  document.documentElement.style.setProperty('--ui-scale', s.toFixed(2));
+}
 
 /* ========== init after DOM ready ========== */
 function init(){
@@ -115,7 +124,6 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   };
   sel.addEventListener("change",apply);
   inp && inp.addEventListener("input",apply);
-  // init hidden row state
   if(sel.value!=="__custom__") row.classList.add("hidden");
 }
 
@@ -353,27 +361,48 @@ function openPreviewAndZip(){
   w.document.head.appendChild(script);
 }
 
-/* ========== splitter ========== */
+/* ========== splitter (width + scale) ========== */
 function setupSplitter(){
   const splitter=$("splitter"); if(!splitter) return;
   let startX=0,startW=0,active=false;
-  const saved=localStorage.getItem("sidebar-w"); if(saved) document.documentElement.style.setProperty("--sidebar-w",saved+"px");
+
+  const saved=localStorage.getItem("sidebar-w");
+  if(saved){
+    document.documentElement.style.setProperty("--sidebar-w", saved+"px");
+    updateScaleFromWidth(parseFloat(saved));
+  }else{
+    const current=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
+    updateScaleFromWidth(current);
+  }
+
   splitter.addEventListener("pointerdown",e=>{
     active=true; startX=e.clientX;
     startW=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
-    splitter.setPointerCapture(e.pointerId); splitter.style.background="#3a4150";
+    splitter.setPointerCapture(e.pointerId);
+    splitter.style.background="#3a4150";
+    document.body.style.userSelect="none";
   });
+
   const onMove=e=>{
     if(!active) return;
     const dx=e.clientX-startX, vw=Math.max(window.innerWidth,360);
     const min=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-min"));
     const max=Math.min(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-max")), vw*0.6);
     const w=clamp(startW+dx,min,max);
-    document.documentElement.style.setProperty("--sidebar-w",w+"px");
+    document.documentElement.style.setProperty("--sidebar-w", w+"px");
+    updateScaleFromWidth(w);
   };
-  const onUp=()=>{ if(!active) return; active=false; splitter.style.background="var(--line)";
+
+  const onUp=()=>{
+    if(!active) return;
+    active=false;
+    splitter.style.background="var(--line)";
+    document.body.style.userSelect="";
     const w=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
-    localStorage.setItem("sidebar-w",String(Math.round(w))); };
+    localStorage.setItem("sidebar-w", String(Math.round(w)));
+    updateScaleFromWidth(w);
+  };
+
   window.addEventListener("pointermove",onMove);
   window.addEventListener("pointerup",onUp);
 }
