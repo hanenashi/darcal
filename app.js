@@ -27,10 +27,12 @@ const state={
   hdrText:"{MONTH} {YEAR}", hdrFont:"Inter, Arial", hdrSizePt:18, hdrAlign:"left", hdrGap:6,
   cellStrokePt:0.6, cellRadius:2, gutX:2, gutY:2,
   tableLines:false, hideEmpty:false, showAdj:false, adjAlpha:55,
-  dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right"
+  dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
+  // View transform for pan/zoom
+  view:{scale:1, tx:12, ty:12, min:0.3, max:4}
 };
 
-let previewHost, hud;
+let previewHost, stage, hud;
 
 /* ===== safe binding helpers ===== */
 function bindNum(id,key){ const e=$(id); if(!e) return;
@@ -53,6 +55,11 @@ function bindChk(id,key){ const e=$(id); if(!e) return;
 /* ===== UI init ===== */
 function init(){
   previewHost=$("preview"); hud=$("hud");
+
+  // create stage for pan/zoom
+  stage=document.createElement("div");
+  stage.id="stage";
+  previewHost.appendChild(stage);
 
   // Populate month select
   const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; }
@@ -98,9 +105,12 @@ function init(){
   // Generate all
   const gen=$("generate"); gen && (gen.onclick=()=>openPreviewAndZip());
 
-  // FAB + sheet + hotkeys
+  // FAB + modal + hotkeys
   setupFabAndSheet();
   setupHotkeys();
+
+  // Pan/zoom wire-up
+  wirePanZoom();
 
   // First paint
   render();
@@ -279,15 +289,29 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
 
 /* ===== render ===== */
 function render(){
-  previewHost.innerHTML='<div id="hud" class="hud" style="display:none"></div>';
-  hud=$("hud");
+  // keep stage; only clear its children
+  stage.innerHTML="";
+  // HUD stays as is
   const svg=buildMonthSVG(state.year,state.month,{exportMode:false});
   svg.style.maxWidth="100%"; svg.style.height="auto";
-  previewHost.appendChild(svg);
+  stage.appendChild(svg);
 
-  // reflect live geometry into inputs if the sheet is open
-  if ($("sheet").getAttribute("aria-hidden")==="false"){
-    ["calX","calY","calW","calH"].forEach(k=>{ const e=$(k); if(e) e.value=state[k]; });
+  // apply view transform
+  applyView();
+
+  // reflect live geometry into inputs if the modal is open
+  syncControlValuesIfOpen();
+}
+
+function syncControlValuesIfOpen(){
+  const sheet=$("sheet");
+  if (sheet && sheet.getAttribute("aria-hidden")==="false"){
+    ["calX","calY","calW","calH"].forEach(k=>{ const e=$(k); if(e && document.activeElement!==e) e.value=state[k]; });
+    const yr=$("year"); if(yr && document.activeElement!==yr) yr.value=state.year;
+    const ms=$("month"); if(ms && document.activeElement!==ms) ms.value=state.month;
+    const pw=$("pageW"), ph=$("pageH");
+    pw && document.activeElement!==pw && (pw.value=state.pageW);
+    ph && document.activeElement!==ph && (ph.value=state.pageH);
   }
 }
 
@@ -312,7 +336,7 @@ function wireDrag(svg,ov){
     else if(active.role==="se"){w=clamp(w+dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
     else if(active.role==="ne"){w=clamp(w+dxmm,minW,9999);y+=dymm;h=clamp(h-dymm,minH,9999)}
     else if(active.role==="sw"){x+=dxmm;w=clamp(w-dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
-    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm|minH,9999)}
+    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm,minH,9999)} // FIXED
     x=clamp(x,0,state.pageW-w); y=clamp(y,0,state.pageH-h);
     state.calX=r1(x); state.calY=r1(y); state.calW=r1(w); state.calH=r1(h);
 
@@ -333,18 +357,111 @@ function wireDrag(svg,ov){
     // HUD position + text
     const vb=previewHost.getBoundingClientRect();
     hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
-    hud.style.left=(e.clientX - vb.left + previewHost.scrollLeft + 12)+"px";
-    hud.style.top =(e.clientY - vb.top  + previewHost.scrollTop  + 12)+"px";
+    hud.style.left=(e.clientX - vb.left + 12)+"px";
+    hud.style.top =(e.clientY - vb.top  + 12)+"px";
 
-    // mirror into inputs live if sheet is open
-    if ($("sheet").getAttribute("aria-hidden")==="false"){
-      ["calX","calY","calW","calH"].forEach(k=>{ const i=$(k); if(i) i.value=state[k]; });
-    }
+    // mirror into inputs live if modal is open
+    syncControlValuesIfOpen();
   };
   const onUp=()=>{active=null;hud.style.display="none";render()};
   ov.addEventListener("pointerdown",onDown);
   svg.addEventListener("pointermove",onMove);
   svg.addEventListener("pointerup",onUp);
+}
+
+/* ===== preview pan & zoom ===== */
+function wirePanZoom(){
+  // mouse wheel zoom (cursor-centered), left-drag to pan background
+  let isPanning=false, panStart=null;
+
+  previewHost.addEventListener("wheel",(e)=>{
+    if(e.ctrlKey) return; // allow browser zoom if user really wants
+    e.preventDefault();
+    const rect=previewHost.getBoundingClientRect();
+    const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
+
+    const before = screenToWorld(cx, cy);
+    const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+    state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
+    const after = screenToWorld(cx, cy);
+
+    // adjust translation so the point under cursor stays fixed
+    state.view.tx += (before.x - after.x) * state.view.scale;
+    state.view.ty += (before.y - after.y) * state.view.scale;
+
+    applyView();
+  }, {passive:false});
+
+  // start panning when clicking empty preview area (outside stage overlay interactions)
+  previewHost.addEventListener("pointerdown",(e)=>{
+    // ignore if clicking a handle/overlay (SVG inside stage will capture those)
+    if(e.target.closest('svg [data-role]')) return;
+    isPanning=true;
+    panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
+    previewHost.setPointerCapture(e.pointerId);
+  });
+  previewHost.addEventListener("pointermove",(e)=>{
+    if(!isPanning) return;
+    const dx=e.clientX - panStart.x;
+    const dy=e.clientY - panStart.y;
+    state.view.tx = panStart.tx + dx;
+    state.view.ty = panStart.ty + dy;
+    applyView();
+  });
+  previewHost.addEventListener("pointerup",()=>{ isPanning=false; });
+
+  // touch: pinch to zoom + one-finger pan
+  let touches=new Map();
+  previewHost.addEventListener("touchstart",(e)=>{
+    if(e.touches.length===1){
+      // one finger pan
+    }
+  }, {passive:true});
+  previewHost.addEventListener("touchmove",(e)=>{
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      const prev=touches.get(t.identifier)||{x:t.clientX,y:t.clientY};
+      state.view.tx += (t.clientX - prev.x);
+      state.view.ty += (t.clientY - prev.y);
+      touches.set(t.identifier,{x:t.clientX,y:t.clientY});
+      applyView();
+    }else if(e.touches.length===2){
+      e.preventDefault();
+      const [a,b]=e.touches;
+      const pa=touches.get(a.identifier)||{x:a.clientX,y:a.clientY};
+      const pb=touches.get(b.identifier)||{x:b.clientX,y:b.clientY};
+
+      const prevDist=Math.hypot(pa.x-pb.x, pa.y-pb.y) || 1;
+      const newDist=Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY) || 1;
+      const midX=(a.clientX+b.clientX)/2, midY=(a.clientY+b.clientY)/2;
+
+      const before=screenToWorld(midX - previewHost.getBoundingClientRect().left,
+                                 midY - previewHost.getBoundingClientRect().top);
+      const factor= newDist/prevDist;
+      state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
+      const after=screenToWorld(midX - previewHost.getBoundingClientRect().left,
+                                midY - previewHost.getBoundingClientRect().top);
+
+      state.view.tx += (before.x - after.x) * state.view.scale;
+      state.view.ty += (before.y - after.y) * state.view.scale;
+
+      touches.set(a.identifier,{x:a.clientX,y:a.clientY});
+      touches.set(b.identifier,{x:b.clientX,y:b.clientY});
+      applyView();
+    }
+  }, {passive:false});
+  previewHost.addEventListener("touchend",(e)=>{
+    for(const t of e.changedTouches) touches.delete(t.identifier);
+  }, {passive:true});
+}
+
+function screenToWorld(sx, sy){
+  const sc=state.view.scale;
+  return { x:(sx - state.view.tx)/sc, y:(sy - state.view.ty)/sc };
+}
+function applyView(){
+  const {scale,tx,ty}=state.view;
+  stage.style.transform=`translate(${tx}px, ${ty}px) scale(${scale})`;
 }
 
 /* ===== preview + ZIP ===== */
@@ -374,7 +491,7 @@ function openPreviewAndZip(){
   w.document.head.appendChild(script);
 }
 
-/* ===== FAB + settings sheet ===== */
+/* ===== FAB + settings modal ===== */
 function setupFabAndSheet(){
   const fab=$("fab"), sheet=$("sheet"), close=$("closeSheet");
   // restore FAB position
@@ -404,7 +521,7 @@ function setupFabAndSheet(){
   window.addEventListener("pointerup", end);
   function getCS(el,prop){ return window.getComputedStyle(el).getPropertyValue(prop); }
 
-  // tap to open/close sheet (ignore if dragging > 6px)
+  // tap to open/close modal (ignore if dragging > 6px)
   let pressPos=null;
   fab.addEventListener("pointerdown", e=>{ pressPos={x:e.clientX,y:e.clientY}; }, {capture:true});
   fab.addEventListener("pointerup", e=>{
@@ -416,7 +533,7 @@ function setupFabAndSheet(){
 
   close && (close.onclick=()=>sheet.setAttribute("aria-hidden","true"));
 
-  // Dismiss by tapping backdrop (not the card)
+  // Dismiss by tapping backdrop (but not the card)
   sheet.addEventListener("click", e=>{
     if(e.target===sheet) sheet.setAttribute("aria-hidden","true");
   });
@@ -426,9 +543,11 @@ function toggleSheet(force){
   const sheet=$("sheet");
   const want = (typeof force==="boolean") ? force : (sheet.getAttribute("aria-hidden")==="true");
   sheet.setAttribute("aria-hidden", want ? "false" : "true");
-  // optional: focus a sensible control when opening
+  // focus a sensible control when opening
   if (want){
     const year=$("year"); year && year.focus({preventScroll:true});
+    // ensure controls reflect current state at open
+    syncControlValuesIfOpen();
   }
 }
 
@@ -437,7 +556,7 @@ function setupHotkeys(){
   document.addEventListener("keydown", (e)=>{
     const tag=(e.target && e.target.tagName)||"";
     const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target.isContentEditable;
-    if(editable) return;                // don’t hijack typing in fields
+    if(editable) return;
     if(e.key==='o' || e.key==='O'){ e.preventDefault(); toggleSheet(); }
     if(e.key==='Escape'){ toggleSheet(false); }
   });

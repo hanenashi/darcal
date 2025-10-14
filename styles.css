@@ -10,9 +10,12 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.
 .preview{
   position:fixed; inset:0;
   background:#0c0e12;
-  overflow:auto;
-  overscroll-behavior:contain;
-  padding:8px;
+  overflow:hidden;              /* stage handles its own scroll via pan/zoom */
+}
+#stage{
+  position:absolute; left:0; top:0;
+  transform-origin:0 0;
+  will-change:transform;
 }
 .guide{stroke:var(--guide);stroke-width:1.5;stroke-dasharray:6 4;fill:none}
 .handle{fill:#0c1829;stroke:var(--guide);stroke-width:1.5}
@@ -30,23 +33,24 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.
   touch-action:none;
 }
 
-/* Overlay "sheet" — lighter blur & more transparent so preview stays readable */
+/* Centered modal — lighter blur & more transparent so preview stays readable */
 .sheet{
   position:fixed; inset:0;
-  background:rgba(0,0,0,.22);         /* was .35 */
-  backdrop-filter:saturate(108%) blur(1px); /* was blur(2px) */
+  background:rgba(0,0,0,.22);
+  backdrop-filter:saturate(108%) blur(1px);
   display:none; z-index:40;
 }
 .sheet[aria-hidden="false"]{ display:block; }
 .sheet-card{
-  position:fixed; right:0; top:0; bottom:0;
-  width:min(520px, 92vw);
-  background:rgba(19,22,28,.94);      /* a hair more transparent */
-  border-left:1px solid var(--line);
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  width:min(560px, 94vw); max-height:min(86vh, 900px);
+  background:rgba(19,22,28,.94);
+  border:1px solid var(--line);
   display:flex; flex-direction:column;
-
-  /* compact UI */
-  font-size:13px;
+  border-radius:12px;
+  overflow:hidden;
+  font-size:13px;               /* compact UI */
 }
 .sheet-header{
   display:flex;justify-content:space-between;align-items:center;
@@ -69,8 +73,12 @@ label{min-width:100px;color:var(--muted);font-size:11px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 input[type="number"],input[type="text"],select{
   background:#161a20;color:var(--fg);border:1px solid #2a2f39;border-radius:.45rem;
-  padding:.3rem .45rem; min-width:0; font-size:13px
+  padding:.25rem .4rem; min-width:0; font-size:13px;   /* tighter */
+  height:30px;                                         /* compact dropdowns */
 }
+select{appearance:auto}
+
+/* checkboxes */
 input[type="checkbox"]{transform:translateY(1px)}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 button{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius:.55rem;padding:.38rem .65rem;cursor:pointer;font-size:13px}
