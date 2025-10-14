@@ -1,4 +1,4 @@
-/* ===== basics ===== */
+/* ========== helpers ========== */
 const PX_PER_MM = 96/25.4, mm=v=>v*PX_PER_MM, ptToPx=pt=>pt*(96/72);
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x)), r1=v=>Math.round(v*10)/10;
 const $=id=>document.getElementById(id);
@@ -7,7 +7,7 @@ function isLeap(y){return(y%4===0&&y%100!==0)||(y%400===0)}
 function daysInMonth(y,m){return[31,isLeap(y)?29:28,31,30,31,30,31,31,30,31,30,31][m]}
 function firstWeekday(y,m,f){const d=new Date(y,m,1).getDay();return(d-f+7)%7}
 
-/* ===== language ===== */
+/* ========== language ========== */
 const MONTH_EN=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const MONTH_CZ=["Leden","Únor","Březen","Duben","Květen","Červen","Červenec","Srpen","Září","Říjen","Listopad","Prosinec"];
 const MONTH_JA=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
@@ -18,7 +18,7 @@ const WD_JA_S=["日","月","火","水","木","金","土"],         WD_JA_F=["日
 function monthsByLang(lang){return lang==="ENG"?MONTH_EN:lang==="CZE"?MONTH_CZ:MONTH_JA}
 function weekdaysByLang(lang,full){return (lang==="ENG"?(full?WD_EN_F:WD_EN_S):lang==="CZE"?(full?WD_CZ_F:WD_CZ_S):(full?WD_JA_F:WD_JA_S)).slice()}
 
-/* ===== state ===== */
+/* ========== state ========== */
 const state={
   lang:"ENG", fullNames:false,
   pageW:210,pageH:297,preset:"A4P",
@@ -32,54 +32,57 @@ const state={
 
 let previewHost, hud;
 
-/* ===== safe binding helpers ===== */
-function bindNum(id,key){ const e=$(id); if(!e) return;
-  const fn=()=>{ state[key]=parseFloat(e.value)||0; render(); };
-  e.addEventListener("input",fn); state[key]=parseFloat(e.value)||state[key];
-}
-function bindTxt(id,key){ const e=$(id); if(!e) return;
-  const fn=()=>{ state[key]=e.value; render(); };
-  e.addEventListener("input",fn); state[key]=e.value;
-}
-function bindSel(id,key,intMode=false){ const e=$(id); if(!e) return;
-  const fn=()=>{ state[key]=intMode?parseInt(e.value):e.value; render(); };
-  e.addEventListener("change",fn); state[key]=intMode?parseInt(e.value):e.value;
-}
-function bindChk(id,key){ const e=$(id); if(!e) return;
-  const fn=()=>{ state[key]=e.checked; render(); };
-  e.addEventListener("change",fn); state[key]=e.checked;
+/* ========== safe bind helpers ========== */
+function bindNum(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=parseFloat(e.value)||0; render(); }; e.addEventListener("input",fn); state[key]=parseFloat(e.value)||state[key]; }
+function bindTxt(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=e.value; render(); }; e.addEventListener("input",fn); state[key]=e.value; }
+function bindSel(id,key,intMode=false){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=intMode?parseInt(e.value):e.value; render(); }; e.addEventListener("change",fn); state[key]=intMode?parseInt(e.value):e.value; }
+function bindChk(id,key){ const e=$(id); if(!e) return; const fn=()=>{ state[key]=e.checked; render(); }; e.addEventListener("change",fn); state[key]=e.checked; }
+
+/* ========== settings zoom based on sidebar width ========== */
+function updateScaleFromWidth(wPx){
+  const base = 360;          // “comfy” baseline width
+  const minS = 0.85;
+  const maxS = 1.20;
+  const s = clamp(wPx / base, minS, maxS);
+  document.documentElement.style.setProperty('--ui-scale', s.toFixed(2));
 }
 
-/* ===== UI init ===== */
+/* ========== init after DOM ready ========== */
 function init(){
-  previewHost=$("preview"); hud=$("hud");
+  previewHost = $("preview"); hud = $("hud");
 
-  // Populate month select
-  const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; }
-  const yr=$("year"); if(yr){ yr.value=state.year; }
-
-  // Core bindings
+  // Language
   bindSel("lang","lang"); bindChk("fullNames","fullNames");
-  bindSel("firstDay","firstDay",true);
 
+  // Page preset ↔ size
   bindSel("pagePreset","preset");
-  const pp=$("pagePreset");
-  pp && pp.addEventListener("change",()=>{
-    const map={A4P:[210,297],A4L:[297,210],A5P:[148,210],A5L:[210,148],B5P:[176,250],B5L:[250,176],B4P:[250,353],B4L:[353,250]};
-    const p=pp.value; if(map[p]){ $("pageW").value=map[p][0]; $("pageH").value=map[p][1]; state.pageW=map[p][0]; state.pageH=map[p][1]; render(); }
-  });
+  const pp=$("pagePreset"); if(pp){
+    pp.addEventListener("change",()=>{
+      const map={A4P:[210,297],A4L:[297,210],A5P:[148,210],A5L:[210,148],B5P:[176,250],B5L:[250,176],B4P:[250,353],B4L:[353,250]};
+      const p=pp.value; if(map[p]){ $("pageW").value=map[p][0]; $("pageH").value=map[p][1]; state.pageW=map[p][0]; state.pageH=map[p][1]; render(); }
+    });
+  }
   bindNum("pageW","pageW"); bindNum("pageH","pageH");
 
+  // Block
   ["calX","calY","calW","calH"].forEach(k=>bindNum(k,k));
   bindChk("showGuides","showGuides");
 
-  bindNum("year","year");
-  bindSel("month","month",true);
-  const prevM=$("prevM"), nextM=$("nextM");
-  prevM && (prevM.onclick=()=>{ state.month=(state.month+11)%12; $("month").value=state.month; render(); });
-  nextM && (nextM.onclick=()=>{ state.month=(state.month+1)%12; $("month").value=state.month; render(); });
+  // Locale (left)
+  bindNum("year","year"); bindSel("month","month",true); bindSel("firstDay","firstDay",true);
 
-  // Header fonts
+  // Topbar Month/Year
+  const mt=$("monthTop"); if(mt){ mt.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); mt.value=state.month; }
+  const yTop=$("yearTop"); if(yTop){ yTop.value=state.year; }
+
+  mt && mt.addEventListener("change",()=>{ state.month=parseInt(mt.value); const left=$("month"); if(left) left.value=state.month; render(); });
+  yTop && yTop.addEventListener("input",()=>{ state.year=parseInt(yTop.value)||state.year; const left=$("year"); if(left) left.value=state.year; render(); });
+
+  const prevM=$("prevM"), nextM=$("nextM");
+  prevM && (prevM.onclick=()=>{ state.month=(state.month+11)%12; if(mt) mt.value=state.month; const left=$("month"); if(left) left.value=state.month; render(); });
+  nextM && (nextM.onclick=()=>{ state.month=(state.month+1)%12; if(mt) mt.value=state.month; const left=$("month"); if(left) left.value=state.month; render(); });
+
+  // Header font dropdown + custom
   setupFontPicker("hdrFontSel","hdrFontCustomRow","hdrFontCustom","hdrFont");
   bindNum("hdrSize","hdrSizePt"); bindSel("hdrAlign","hdrAlign"); bindNum("hdrGap","hdrGap");
   bindTxt("hdrText","hdrText");
@@ -90,21 +93,22 @@ function init(){
   bindChk("tableLines","tableLines"); bindChk("hideEmpty","hideEmpty");
   bindChk("showAdj","showAdj"); bindNum("adjAlpha","adjAlpha");
 
-  // Day fonts
+  // Day font dropdown + custom
   setupFontPicker("dayFontSel","dayFontCustomRow","dayFontCustom","dayFont");
   bindNum("daySizePt","daySizePt");
   bindNum("dayOffX","dayOffX"); bindNum("dayOffY","dayOffY"); bindSel("dayAnchor","dayAnchor");
 
-  // Generate all
+  // Generate
   const gen=$("generate"); gen && (gen.onclick=()=>openPreviewAndZip());
 
-  // FAB + sheet
-  setupFabAndSheet();
+  // Splitter
+  setupSplitter();
 
   // First paint
   render();
 }
 
+/* font picker helper */
 function setupFontPicker(selectId,rowId,inputId,stateKey){
   const sel=$(selectId), row=$(rowId), inp=$(inputId);
   if(!sel) return;
@@ -123,7 +127,7 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   if(sel.value!=="__custom__") row.classList.add("hidden");
 }
 
-/* ===== weekday helper ===== */
+/* ===== weekdays helper ===== */
 function weekdayRow(){
   const base=weekdaysByLang(state.lang,state.fullNames);
   if(state.firstDay===0) return base;
@@ -167,7 +171,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   const cellW=(gridW-gutX*(cols-1))/cols;
   const cellH=(gridH-gutY*(rows-1))/rows;
 
-  // weekday row
   weekdayRow().forEach((d,i)=>{
     const t=document.createElementNS(svgns,"text");
     t.setAttribute("x",i*(cellW+gutX)+cellW/2);
@@ -183,7 +186,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   const daysPrev=daysInMonth(y-(mIdx===0?1:0),(mIdx+11)%12);
   let n=1,trailing=1;
 
-  // table lines
   if(state.tableLines){
     const border=document.createElementNS(svgns,"rect");
     border.setAttribute("x",0); border.setAttribute("y",gridY0);
@@ -204,7 +206,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // cells + labels
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
       const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
@@ -240,7 +241,7 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // interactive overlay (not in export)
+  // overlay
   if(state.showGuides && !exportMode){
     const ov=document.createElementNS(svgns,"g");
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
@@ -276,21 +277,17 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   return svg;
 }
 
-/* ===== render ===== */
+/* ========== render ========== */
 function render(){
+  if(!previewHost) return;
   previewHost.innerHTML='<div id="hud" class="hud" style="display:none"></div>';
   hud=$("hud");
   const svg=buildMonthSVG(state.year,state.month,{exportMode:false});
   svg.style.maxWidth="100%"; svg.style.height="auto";
   previewHost.appendChild(svg);
-
-  // reflect live geometry into inputs if the sheet is open
-  if ($("sheet").getAttribute("aria-hidden")==="false"){
-    ["calX","calY","calW","calH"].forEach(k=>{ const e=$(k); if(e) e.value=state[k]; });
-  }
 }
 
-/* ===== drag calendar block ===== */
+/* ========== drag ========== */
 function wireDrag(svg,ov){
   let active=null;
   const onDown=e=>{
@@ -314,11 +311,9 @@ function wireDrag(svg,ov){
     else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm,minH,9999)}
     x=clamp(x,0,state.pageW-w); y=clamp(y,0,state.pageH-h);
     state.calX=r1(x); state.calY=r1(y); state.calW=r1(w); state.calH=r1(h);
-
-    // fast overlay update
+    const guide=ov.querySelector('rect.guide');
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
-    const grect=ov.querySelector('rect.guide');
-    grect.setAttribute("width",mm(state.calW)); grect.setAttribute("height",mm(state.calH));
+    guide.setAttribute("width",mm(state.calW)); guide.setAttribute("height",mm(state.calH));
     const wpx=mm(state.calW), hpx=mm(state.calH), size=mm(4.5);
     ov.querySelectorAll('.handle').forEach(hh=>{
       const role=hh.dataset.role; let hx=0,hy=0;
@@ -328,17 +323,10 @@ function wireDrag(svg,ov){
       if(role==="w"||role==="e")hy=hpx/2;
       hh.setAttribute("x",hx-size/2); hh.setAttribute("y",hy-size/2);
     });
-
-    // HUD position + text
     const vb=previewHost.getBoundingClientRect();
     hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
     hud.style.left=(e.clientX - vb.left + previewHost.scrollLeft + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + previewHost.scrollTop  + 12)+"px";
-
-    // mirror into inputs live if sheet is open
-    if ($("sheet").getAttribute("aria-hidden")==="false"){
-      ["calX","calY","calW","calH"].forEach(k=>{ const i=$(k); if(i) i.value=state[k]; });
-    }
   };
   const onUp=()=>{active=null;hud.style.display="none";render()};
   ov.addEventListener("pointerdown",onDown);
@@ -346,7 +334,7 @@ function wireDrag(svg,ov){
   svg.addEventListener("pointerup",onUp);
 }
 
-/* ===== preview + ZIP ===== */
+/* ========== preview + ZIP (CDN) ========== */
 function serializeSVG(svg){return'<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(svg)}
 function buildSVGString(y,m){return serializeSVG(buildMonthSVG(y,m,{exportMode:true}))}
 function openPreviewAndZip(){
@@ -373,54 +361,51 @@ function openPreviewAndZip(){
   w.document.head.appendChild(script);
 }
 
-/* ===== FAB + settings sheet ===== */
-function setupFabAndSheet(){
-  const fab=$("fab"), sheet=$("sheet"), close=$("closeSheet");
-  // restore FAB position
-  const saved=localStorage.getItem("fab-pos");
-  if(saved){ try{ const pos=JSON.parse(saved); fab.style.left=pos.l; fab.style.top=pos.t; fab.style.right=""; fab.style.bottom=""; }catch{} }
+/* ========== splitter (width + scale) ========== */
+function setupSplitter(){
+  const splitter=$("splitter"); if(!splitter) return;
+  let startX=0,startW=0,active=false;
 
-  // drag FAB
-  let dragging=false, sx=0, sy=0, sl=0, st=0;
-  const start=e=>{
-    dragging=true; const rect=fab.getBoundingClientRect();
-    sx=e.clientX; sy=e.clientY; sl=rect.left; st=rect.top;
-    fab.setPointerCapture(e.pointerId);
-  };
-  const move=e=>{
-    if(!dragging) return;
-    const dx=e.clientX-sx, dy=e.clientY-sy;
-    const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - fab.offsetWidth - 8));
-    const nt=Math.max(8, Math.min(st+dy, window.innerHeight - fab.offsetHeight - 8));
-    fab.style.left=nl+"px"; fab.style.top=nt+"px"; fab.style.right=""; fab.style.bottom="";
-  };
-  const end=()=>{
-    if(!dragging) return; dragging=false;
-    localStorage.setItem("fab-pos", JSON.stringify({l:fABcs(fab,"left"), t:fABcs(fab,"top")}));
-  };
-  fab.addEventListener("pointerdown", start);
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", end);
-  function fABcs(el,prop){ return window.getComputedStyle(el).getPropertyValue(prop); }
+  const saved=localStorage.getItem("sidebar-w");
+  if(saved){
+    document.documentElement.style.setProperty("--sidebar-w", saved+"px");
+    updateScaleFromWidth(parseFloat(saved));
+  }else{
+    const current=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
+    updateScaleFromWidth(current);
+  }
 
-  // tap to open/close sheet (ignore if dragging moved > a few px)
-  let pressPos=null;
-  fab.addEventListener("pointerdown", e=>{ pressPos={x:e.clientX,y:e.clientY}; }, {capture:true});
-  fab.addEventListener("pointerup", e=>{
-    if(!pressPos) return;
-    const moved=Math.hypot(e.clientX-pressPos.x, e.clientY-pressPos.y);
-    pressPos=null;
-    if(moved<6){ // treat as click
-      sheet.setAttribute("aria-hidden", sheet.getAttribute("aria-hidden")==="true"?"false":"true");
-    }
+  splitter.addEventListener("pointerdown",e=>{
+    active=true; startX=e.clientX;
+    startW=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
+    splitter.setPointerCapture(e.pointerId);
+    splitter.style.background="#3a4150";
+    document.body.style.userSelect="none";
   });
 
-  close && (close.onclick=()=>sheet.setAttribute("aria-hidden","true"));
-  // Dismiss by tapping backdrop (but not the card)
-  sheet.addEventListener("click", e=>{
-    if(e.target===sheet) sheet.setAttribute("aria-hidden","true");
-  });
+  const onMove=e=>{
+    if(!active) return;
+    const dx=e.clientX-startX, vw=Math.max(window.innerWidth,360);
+    const min=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-min"));
+    const max=Math.min(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-max")), vw*0.6);
+    const w=clamp(startW+dx,min,max);
+    document.documentElement.style.setProperty("--sidebar-w", w+"px");
+    updateScaleFromWidth(w);
+  };
+
+  const onUp=()=>{
+    if(!active) return;
+    active=false;
+    splitter.style.background="var(--line)";
+    document.body.style.userSelect="";
+    const w=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w"));
+    localStorage.setItem("sidebar-w", String(Math.round(w)));
+    updateScaleFromWidth(w);
+  };
+
+  window.addEventListener("pointermove",onMove);
+  window.addEventListener("pointerup",onUp);
 }
 
-/* ===== boot ===== */
+/* start */
 if(document.readyState!=="loading") init(); else document.addEventListener("DOMContentLoaded", init);

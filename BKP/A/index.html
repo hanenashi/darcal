@@ -4,35 +4,21 @@
   <meta charset="utf-8" />
   <title>Calendar Maker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Reasonable defaults that render JA cleanly -->
+  <!-- Fonts for good defaults -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
   <link href="styles.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- Fullscreen live preview -->
-  <div id="preview" class="preview">
-    <div id="hud" class="hud" style="display:none"></div>
-  </div>
-
-  <!-- Floating draggable settings button -->
-  <button id="fab" class="fab" aria-label="Settings" title="Settings">⚙️</button>
-
-  <!-- Settings overlay -->
-  <div id="sheet" class="sheet" aria-hidden="true">
-    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
-      <div class="sheet-header">
-        <h1 id="sheetTitle">Settings</h1>
-        <button id="closeSheet" class="icon-btn" aria-label="Close">✕</button>
-      </div>
-
-      <div class="sheet-body">
+  <div id="app" class="app">
+    <!-- Left: settings (independent scroll) -->
+    <aside id="settings" class="settings scroll">
+      <div class="settings-inner">
         <section>
-          <h2>Language & Labels</h2>
+          <h2>Language</h2>
           <div class="grid2">
-            <div class="row">
-              <label>Preset</label>
+            <div class="row"><label>Preset</label>
               <select id="lang">
                 <option value="ENG">ENG — English</option>
                 <option value="CZE">CZE — Čeština</option>
@@ -40,24 +26,6 @@
               </select>
             </div>
             <div class="row"><label>Full names</label><input id="fullNames" type="checkbox"></div>
-          </div>
-          <div class="row">
-            <label>First day</label>
-            <select id="firstDay"><option value="0">Sunday</option><option value="1">Monday (ISO)</option></select>
-          </div>
-        </section>
-
-        <section>
-          <h2>Year & Month</h2>
-          <div class="grid2">
-            <div class="row"><label>Year</label><input id="year" type="number" step="1"></div>
-            <div class="row"><label>Month</label>
-              <select id="month"></select>
-            </div>
-          </div>
-          <div class="row">
-            <button id="prevM">◀</button>
-            <button id="nextM">▶</button>
           </div>
         </section>
 
@@ -86,10 +54,10 @@
         <section>
           <h2>Calendar Block (mm)</h2>
           <div class="grid2">
-            <div class="row"><label>X</label><input id="calX" type="number" step=".5"></div>
-            <div class="row"><label>Y</label><input id="calY" type="number" step=".5"></div>
-            <div class="row"><label>Width</label><input id="calW" type="number" step=".5"></div>
-            <div class="row"><label>Height</label><input id="calH" type="number" step=".5"></div>
+            <div class="row"><label>X</label><input id="calX" type="number" value="15" step=".5"></div>
+            <div class="row"><label>Y</label><input id="calY" type="number" value="150" step=".5"></div>
+            <div class="row"><label>Width</label><input id="calW" type="number" value="180" step=".5"></div>
+            <div class="row"><label>Height</label><input id="calH" type="number" value="120" step=".5"></div>
           </div>
           <div class="row"><label>Show guides</label><input id="showGuides" type="checkbox" checked></div>
         </section>
@@ -175,7 +143,27 @@
           <button id="generate">Generate All (preview & ZIP)</button>
         </div>
       </div>
-    </div>
+    </aside>
+
+    <!-- Draggable divider -->
+    <div id="splitter" class="splitter" title="Drag to resize settings"></div>
+
+    <!-- Right: workspace -->
+    <main id="workspace" class="workspace">
+      <div class="topbar">
+        <div class="nav">
+          <label>Year</label><input id="yearTop" type="number" step="1" />
+          <label>Month</label>
+          <select id="monthTop"></select>
+          <button id="prevM" aria-label="Previous month">◀</button>
+          <button id="nextM" aria-label="Next month">▶</button>
+        </div>
+      </div>
+
+      <div id="preview" class="preview">
+        <div id="hud" class="hud" style="display:none"></div>
+      </div>
+    </main>
   </div>
 
   <script defer src="app.js"></script>
