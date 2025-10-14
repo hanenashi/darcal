@@ -10,54 +10,60 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.
 .preview{
   position:fixed; inset:0;
   background:#0c0e12;
-  overflow:hidden;              /* stage handles its own scroll via pan/zoom */
+  overflow:hidden;                 /* custom pan/zoom */
+  touch-action:none;               /* allow pinch-zoom + pan custom */
 }
 #stage{
   position:absolute; left:0; top:0;
   transform-origin:0 0;
   will-change:transform;
 }
+svg [data-role]{ touch-action:none } /* let handles work on touch */
 .guide{stroke:var(--guide);stroke-width:1.5;stroke-dasharray:6 4;fill:none}
 .handle{fill:#0c1829;stroke:var(--guide);stroke-width:1.5}
 .hud{position:absolute;z-index:10;background:var(--hud);color:#000;padding:2px 6px;border-radius:.35rem;font-size:12px;border:1px solid #b89c2a;pointer-events:none}
 
-/* Draggable FAB */
-.fab{
+/* Rectangular Settings button (matches header tone) */
+.settings-btn{
   position:fixed; z-index:30;
   right:16px; bottom:16px;
-  width:56px; height:56px; border-radius:50%;
-  display:grid; place-items:center;
-  font-size:24px; line-height:1;
+  padding:.5rem .85rem; border-radius:.65rem;
+  font-size:15px; font-weight:600;
   background:#1f2a44; color:#fff; border:1px solid #2f416a;
   box-shadow:0 6px 18px rgba(0,0,0,.35);
-  touch-action:none;
 }
 
-/* Centered modal — lighter blur & more transparent so preview stays readable */
+/* Floating window (no backdrop) */
 .sheet{
-  position:fixed; inset:0;
-  background:rgba(0,0,0,.22);
-  backdrop-filter:saturate(108%) blur(1px);
-  display:none; z-index:40;
+  position:fixed; inset:0; pointer-events:none; /* container exists only to hold the window */
 }
-.sheet[aria-hidden="false"]{ display:block; }
+.sheet[aria-hidden="false"]{ pointer-events:none; } /* no overlay */
 .sheet-card{
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%);
-  width:min(560px, 94vw); max-height:min(86vh, 900px);
-  background:rgba(19,22,28,.94);
+  position:fixed;
+  left:50%; top:50%; transform:translate(-50%,-50%);
+  width: min(560px, 92vw);
+  height: min(640px, 88vh);
+  min-width: 320px; min-height: 320px;
+  background:rgba(19,22,28,.96);
   border:1px solid var(--line);
   display:flex; flex-direction:column;
   border-radius:12px;
   overflow:hidden;
-  font-size:13px;               /* compact UI */
+  font-size:13px;
+  box-shadow:0 12px 40px rgba(0,0,0,.55);
+  pointer-events:auto;             /* the window is interactive */
 }
+
+/* draggable header */
 .sheet-header{
   display:flex;justify-content:space-between;align-items:center;
-  padding:8px 10px; border-bottom:1px solid var(--line)
+  padding:8px 10px; border-bottom:1px solid var(--line);
+  cursor:move; user-select:none;
 }
 .sheet-header h1{font-size:15px;margin:0}
+.sheet-actions{display:flex; gap:6px}
 .icon-btn{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius:.5rem;padding:.3rem .55rem}
+
 .sheet-body{
   padding:8px 10px;
   overflow:auto; overscroll-behavior:contain;
@@ -69,17 +75,20 @@ h2{
   text-transform:uppercase; letter-spacing:.06em
 }
 .row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
-label{min-width:100px;color:var(--muted);font-size:11px}
+label{min-width:96px;color:var(--muted);font-size:11px}
+
+/* narrower number inputs + compact selects */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 input[type="number"],input[type="text"],select{
   background:#161a20;color:var(--fg);border:1px solid #2a2f39;border-radius:.45rem;
-  padding:.25rem .4rem; min-width:0; font-size:13px;   /* tighter */
-  height:30px;                                         /* compact dropdowns */
+  padding:.24rem .38rem; min-width:0; font-size:13px;
+  height:30px;
 }
-select{appearance:auto}
-
-/* checkboxes */
+input[type="number"]{ width:92px }          /* much narrower */
+input[type="text"]{ width:100% }
+select{appearance:auto; max-width:220px}    /* tighter dropdowns */
 input[type="checkbox"]{transform:translateY(1px)}
+
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 button{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius:.55rem;padding:.38rem .65rem;cursor:pointer;font-size:13px}
 button:active{transform:translateY(1px)}
@@ -90,3 +99,17 @@ button:active{transform:translateY(1px)}
   border-top:1px dashed #2a2f39;
   padding-top:10px; margin-top:8px;
 }
+
+/* window resize handles */
+.win-handle{
+  position:absolute; width:14px; height:14px; background:transparent;
+  z-index:2; touch-action:none;
+}
+.handle-nw{left:-3px; top:-3px; cursor:nwse-resize}
+.handle-ne{right:-3px; top:-3px; cursor:nesw-resize}
+.handle-sw{left:-3px; bottom:-3px; cursor:nesw-resize}
+.handle-se{right:-3px; bottom:-3px; cursor:nwse-resize}
+.handle-n{left:50%; top:-3px; transform:translateX(-50%); cursor:ns-resize}
+.handle-s{left:50%; bottom:-3px; transform:translateX(-50%); cursor:ns-resize}
+.handle-w{left:-3px; top:50%; transform:translateY(-50%); cursor:ew-resize}
+.handle-e{right:-3px; top:50%; transform:translateY(-50%); cursor:ew-resize}

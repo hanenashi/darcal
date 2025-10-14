@@ -16,15 +16,18 @@
     <div id="hud" class="hud" style="display:none"></div>
   </div>
 
-  <!-- Floating draggable settings button -->
-  <button id="fab" class="fab" aria-label="Settings" title="Settings">⚙️</button>
+  <!-- Rectangular Settings button -->
+  <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">Settings</button>
 
-  <!-- Settings modal (centered) -->
+  <!-- Floating, draggable, resizable settings window -->
   <div id="sheet" class="sheet" aria-hidden="true">
-    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
-      <div class="sheet-header">
+    <div class="sheet-card" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
+      <div class="sheet-header" id="sheetDragHandle">
         <h1 id="sheetTitle">Settings</h1>
-        <button id="closeSheet" class="icon-btn" aria-label="Close">✕</button>
+        <div class="sheet-actions">
+          <button id="resetView" class="icon-btn" title="Reset view">⤾</button>
+          <button id="closeSheet" class="icon-btn" aria-label="Close">✕</button>
+        </div>
       </div>
 
       <div class="sheet-body">
@@ -175,6 +178,16 @@
           <button id="generate">Generate All (preview & ZIP)</button>
         </div>
       </div>
+
+      <!-- resize handles -->
+      <div class="win-handle handle-nw" data-role="nw"></div>
+      <div class="win-handle handle-n"  data-role="n"></div>
+      <div class="win-handle handle-ne" data-role="ne"></div>
+      <div class="win-handle handle-w"  data-role="w"></div>
+      <div class="win-handle handle-e"  data-role="e"></div>
+      <div class="win-handle handle-sw" data-role="sw"></div>
+      <div class="win-handle handle-s"  data-role="s"></div>
+      <div class="win-handle handle-se" data-role="se"></div>
     </div>
   </div>
 

@@ -28,8 +28,8 @@ const state={
   cellStrokePt:0.6, cellRadius:2, gutX:2, gutY:2,
   tableLines:false, hideEmpty:false, showAdj:false, adjAlpha:55,
   dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
-  // View transform for pan/zoom
-  view:{scale:1, tx:12, ty:12, min:0.3, max:4}
+  view:{scale:1, tx:12, ty:12, min:0.3, max:4},
+  win:{x:null,y:null,w:null,h:null} // user window geometry
 };
 
 let previewHost, stage, hud;
@@ -56,7 +56,7 @@ function bindChk(id,key){ const e=$(id); if(!e) return;
 function init(){
   previewHost=$("preview"); hud=$("hud");
 
-  // create stage for pan/zoom
+  // stage for pan/zoom
   stage=document.createElement("div");
   stage.id="stage";
   previewHost.appendChild(stage);
@@ -105,11 +105,13 @@ function init(){
   // Generate all
   const gen=$("generate"); gen && (gen.onclick=()=>openPreviewAndZip());
 
-  // FAB + modal + hotkeys
-  setupFabAndSheet();
+  // Floating settings window: button + drag + resize + persist
+  setupSettingsWindow();
+
+  // Keyboard + hotkeys (+/- zoom)
   setupHotkeys();
 
-  // Pan/zoom wire-up
+  // Pan/zoom wire-up (mouse + touch)
   wirePanZoom();
 
   // First paint
@@ -289,17 +291,11 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
 
 /* ===== render ===== */
 function render(){
-  // keep stage; only clear its children
   stage.innerHTML="";
-  // HUD stays as is
   const svg=buildMonthSVG(state.year,state.month,{exportMode:false});
   svg.style.maxWidth="100%"; svg.style.height="auto";
   stage.appendChild(svg);
-
-  // apply view transform
   applyView();
-
-  // reflect live geometry into inputs if the modal is open
   syncControlValuesIfOpen();
 }
 
@@ -320,7 +316,9 @@ function wireDrag(svg,ov){
   let active=null;
   const onDown=e=>{
     const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
-    e.preventDefault(); svg.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    // capture from the actual target for better touch reliability
+    if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
     hud.style.display="block";
   };
@@ -336,7 +334,7 @@ function wireDrag(svg,ov){
     else if(active.role==="se"){w=clamp(w+dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
     else if(active.role==="ne"){w=clamp(w+dxmm,minW,9999);y+=dymm;h=clamp(h-dymm,minH,9999)}
     else if(active.role==="sw"){x+=dxmm;w=clamp(w-dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
-    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm,minH,9999)} // FIXED
+    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm,minH,9999)}
     x=clamp(x,0,state.pageW-w); y=clamp(y,0,state.pageH-h);
     state.calX=r1(x); state.calY=r1(y); state.calW=r1(w); state.calH=r1(h);
 
@@ -360,45 +358,35 @@ function wireDrag(svg,ov){
     hud.style.left=(e.clientX - vb.left + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + 12)+"px";
 
-    // mirror into inputs live if modal is open
+    // mirror into inputs live if window is open
     syncControlValuesIfOpen();
   };
-  const onUp=()=>{active=null;hud.style.display="none";render()};
-  ov.addEventListener("pointerdown",onDown);
-  svg.addEventListener("pointermove",onMove);
-  svg.addEventListener("pointerup",onUp);
+  const end=()=>{active=null;hud.style.display="none";render()};
+  ov.addEventListener("pointerdown",onDown, {passive:false});
+  svg.addEventListener("pointermove",onMove, {passive:false});
+  svg.addEventListener("pointerup",end, {passive:true});
+  svg.addEventListener("pointercancel",end, {passive:true});
 }
 
 /* ===== preview pan & zoom ===== */
 function wirePanZoom(){
-  // mouse wheel zoom (cursor-centered), left-drag to pan background
+  // mouse wheel zoom (cursor-centered), left-drag background to pan
   let isPanning=false, panStart=null;
 
   previewHost.addEventListener("wheel",(e)=>{
-    if(e.ctrlKey) return; // allow browser zoom if user really wants
+    if(e.ctrlKey) return; // allow browser zoom if the user insists
     e.preventDefault();
     const rect=previewHost.getBoundingClientRect();
     const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
-
-    const before = screenToWorld(cx, cy);
-    const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
-    state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
-    const after = screenToWorld(cx, cy);
-
-    // adjust translation so the point under cursor stays fixed
-    state.view.tx += (before.x - after.x) * state.view.scale;
-    state.view.ty += (before.y - after.y) * state.view.scale;
-
-    applyView();
+    zoomAtPoint(e.deltaY < 0 ? 1.1 : 1/1.1, cx, cy);
   }, {passive:false});
 
-  // start panning when clicking empty preview area (outside stage overlay interactions)
   previewHost.addEventListener("pointerdown",(e)=>{
-    // ignore if clicking a handle/overlay (SVG inside stage will capture those)
+    // don’t pan when touching a calendar handle
     if(e.target.closest('svg [data-role]')) return;
     isPanning=true;
     panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
-    previewHost.setPointerCapture(e.pointerId);
+    if(previewHost.setPointerCapture) previewHost.setPointerCapture(e.pointerId);
   });
   previewHost.addEventListener("pointermove",(e)=>{
     if(!isPanning) return;
@@ -408,15 +396,12 @@ function wirePanZoom(){
     state.view.ty = panStart.ty + dy;
     applyView();
   });
-  previewHost.addEventListener("pointerup",()=>{ isPanning=false; });
+  const endPan=()=>{ isPanning=false; };
+  previewHost.addEventListener("pointerup", endPan, {passive:true});
+  previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
-  // touch: pinch to zoom + one-finger pan
+  // touch pinch handled by browser? we do custom to keep cursor-centric logic
   let touches=new Map();
-  previewHost.addEventListener("touchstart",(e)=>{
-    if(e.touches.length===1){
-      // one finger pan
-    }
-  }, {passive:true});
   previewHost.addEventListener("touchmove",(e)=>{
     if(e.touches.length===1){
       const t=e.touches[0];
@@ -433,26 +418,18 @@ function wirePanZoom(){
 
       const prevDist=Math.hypot(pa.x-pb.x, pa.y-pb.y) || 1;
       const newDist=Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY) || 1;
-      const midX=(a.clientX+b.clientX)/2, midY=(a.clientY+b.clientY)/2;
+      const rect=previewHost.getBoundingClientRect();
+      const midX=((a.clientX+b.clientX)/2) - rect.left;
+      const midY=((a.clientY+b.clientY)/2) - rect.top;
 
-      const before=screenToWorld(midX - previewHost.getBoundingClientRect().left,
-                                 midY - previewHost.getBoundingClientRect().top);
       const factor= newDist/prevDist;
-      state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
-      const after=screenToWorld(midX - previewHost.getBoundingClientRect().left,
-                                midY - previewHost.getBoundingClientRect().top);
-
-      state.view.tx += (before.x - after.x) * state.view.scale;
-      state.view.ty += (before.y - after.y) * state.view.scale;
+      zoomAtPoint(factor, midX, midY);
 
       touches.set(a.identifier,{x:a.clientX,y:a.clientY});
       touches.set(b.identifier,{x:b.clientX,y:b.clientY});
-      applyView();
     }
   }, {passive:false});
-  previewHost.addEventListener("touchend",(e)=>{
-    for(const t of e.changedTouches) touches.delete(t.identifier);
-  }, {passive:true});
+  previewHost.addEventListener("touchend",(e)=>{ for(const t of e.changedTouches) touches.delete(t.identifier); }, {passive:true});
 }
 
 function screenToWorld(sx, sy){
@@ -462,6 +439,14 @@ function screenToWorld(sx, sy){
 function applyView(){
   const {scale,tx,ty}=state.view;
   stage.style.transform=`translate(${tx}px, ${ty}px) scale(${scale})`;
+}
+function zoomAtPoint(factor, cx, cy){
+  const before = screenToWorld(cx, cy);
+  state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
+  const after = screenToWorld(cx, cy);
+  state.view.tx += (before.x - after.x) * state.view.scale;
+  state.view.ty += (before.y - after.y) * state.view.scale;
+  applyView();
 }
 
 /* ===== preview + ZIP ===== */
@@ -491,74 +476,124 @@ function openPreviewAndZip(){
   w.document.head.appendChild(script);
 }
 
-/* ===== FAB + settings modal ===== */
-function setupFabAndSheet(){
-  const fab=$("fab"), sheet=$("sheet"), close=$("closeSheet");
-  // restore FAB position
-  const saved=localStorage.getItem("fab-pos");
-  if(saved){ try{ const pos=JSON.parse(saved); fab.style.left=pos.l; fab.style.top=pos.t; fab.style.right=""; fab.style.bottom=""; }catch{} }
+/* ===== Settings floating window: open/close/drag/resize/persist ===== */
+function setupSettingsWindow(){
+  const sheet=$("sheet"), win=$(".sheet-card"), btn=$("settingsBtn"), close=$("closeSheet"), dragHandle=$("sheetDragHandle");
+  const reset=$("resetView");
 
-  // drag FAB
+  // helper for qs inside this scope
+  function $(sel,root=document){ return root.querySelector(sel); }
+
+  // restore last geometry
+  try{
+    const s=JSON.parse(localStorage.getItem("settings-win")||"{}");
+    if(s && s.w && s.h && s.x!=null && s.y!=null){
+      win.style.width=s.w+"px"; win.style.height=s.h+"px";
+      win.style.left=s.x+"px"; win.style.top=s.y+"px"; win.style.transform="none";
+    }
+  }catch{}
+
+  // open/close
+  function open(){ sheet.setAttribute("aria-hidden","false"); syncControlValuesIfOpen(); }
+  function close(){ sheet.setAttribute("aria-hidden","true"); }
+
+  btn.addEventListener("click", open);
+  close && close.addEventListener("click", close);
+
+  // drag
   let dragging=false, sx=0, sy=0, sl=0, st=0;
-  const start=e=>{
-    dragging=true; const rect=fab.getBoundingClientRect();
+  dragHandle.addEventListener("pointerdown",(e)=>{
+    dragging=true; const rect=win.getBoundingClientRect();
     sx=e.clientX; sy=e.clientY; sl=rect.left; st=rect.top;
-    fab.setPointerCapture(e.pointerId);
-  };
-  const move=e=>{
+    dragHandle.setPointerCapture && dragHandle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  window.addEventListener("pointermove",(e)=>{
     if(!dragging) return;
-    const dx=e.clientX-sx, dy=e.clientY-sy;
-    const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - fab.offsetWidth - 8));
-    const nt=Math.max(8, Math.min(st+dy, window.innerHeight - fab.offsetHeight - 8));
-    fab.style.left=nl+"px"; fab.style.top=nt+"px"; fab.style.right=""; fab.style.bottom="";
-  };
-  const end=()=>{
-    if(!dragging) return; dragging=false;
-    localStorage.setItem("fab-pos", JSON.stringify({l:getCS(fab,"left"), t:getCS(fab,"top")}));
-  };
-  fab.addEventListener("pointerdown", start);
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", end);
-  function getCS(el,prop){ return window.getComputedStyle(el).getPropertyValue(prop); }
+    let nl=sl + (e.clientX - sx);
+    let nt=st + (e.clientY - sy);
+    // constrain within viewport a bit
+    const maxL=window.innerWidth - 80, maxT=window.innerHeight - 80;
+    nl=Math.max(0, Math.min(nl, maxL));
+    nt=Math.max(0, Math.min(nt, maxT));
+    win.style.left=nl+"px"; win.style.top=nt+"px"; win.style.transform="none";
+  }, {passive:false});
+  window.addEventListener("pointerup",()=>{
+    if(!dragging) return; dragging=false; saveWinGeom();
+  }, {passive:true});
 
-  // tap to open/close modal (ignore if dragging > 6px)
-  let pressPos=null;
-  fab.addEventListener("pointerdown", e=>{ pressPos={x:e.clientX,y:e.clientY}; }, {capture:true});
-  fab.addEventListener("pointerup", e=>{
-    if(!pressPos) return;
-    const moved=Math.hypot(e.clientX-pressPos.x, e.clientY-pressPos.y);
-    pressPos=null;
-    if(moved<6){ toggleSheet(); }
+  // resize via handles
+  const handles = win.querySelectorAll(".win-handle");
+  let rs=null;
+  handles.forEach(h=>{
+    h.addEventListener("pointerdown",(e)=>{
+      const role=h.dataset.role;
+      const r=win.getBoundingClientRect();
+      rs={role, sx:e.clientX, sy:e.clientY, x:r.left, y:r.top, w:r.width, h:r.height};
+      h.setPointerCapture && h.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }, {passive:false});
   });
+  window.addEventListener("pointermove",(e)=>{
+    if(!rs) return;
+    let {role,sx,sy,x,y,w,h}=rs;
+    let dx=e.clientX - sx, dy=e.clientY - sy;
+    const minW=320, minH=280;
 
-  close && (close.onclick=()=>sheet.setAttribute("aria-hidden","true"));
+    if(role.includes("e")) w = Math.max(minW, w + dx);
+    if(role.includes("s")) h = Math.max(minH, h + dy);
+    if(role.includes("w")){ w = Math.max(minW, w - dx); x = x + dx; }
+    if(role.includes("n")){ h = Math.max(minH, h - dy); y = y + dy; }
 
-  // Dismiss by tapping backdrop (but not the card)
-  sheet.addEventListener("click", e=>{
-    if(e.target===sheet) sheet.setAttribute("aria-hidden","true");
-  });
-}
+    win.style.width=w+"px"; win.style.height=h+"px";
+    win.style.left=x+"px"; win.style.top=y+"px"; win.style.transform="none";
+  }, {passive:false});
+  const endResize=()=>{ if(!rs) return; rs=null; saveWinGeom(); };
+  window.addEventListener("pointerup", endResize, {passive:true});
+  window.addEventListener("pointercancel", endResize, {passive:true});
 
-function toggleSheet(force){
-  const sheet=$("sheet");
-  const want = (typeof force==="boolean") ? force : (sheet.getAttribute("aria-hidden")==="true");
-  sheet.setAttribute("aria-hidden", want ? "false" : "true");
-  // focus a sensible control when opening
-  if (want){
-    const year=$("year"); year && year.focus({preventScroll:true});
-    // ensure controls reflect current state at open
-    syncControlValuesIfOpen();
+  function saveWinGeom(){
+    const r=win.getBoundingClientRect();
+    localStorage.setItem("settings-win", JSON.stringify({x:r.left, y:r.top, w:r.width, h:r.height}));
   }
+
+  // reset view button
+  reset && reset.addEventListener("click", ()=>{
+    state.view={...state.view, scale:1, tx:12, ty:12};
+    applyView();
+  });
 }
 
-/* ===== hotkeys: 'O' to toggle options; Esc to close ===== */
+/* ===== hotkeys ===== */
 function setupHotkeys(){
   document.addEventListener("keydown", (e)=>{
     const tag=(e.target && e.target.tagName)||"";
-    const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target.isContentEditable;
+    const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
+
+    // +/- zoom, unless typing in an input
+    if(!editable && (e.key==='+' || e.key==='=')){ // = is same key on many layouts
+      e.preventDefault();
+      const rect=previewHost.getBoundingClientRect();
+      zoomAtPoint(1.1, rect.width/2, rect.height/2);
+      return;
+    }
+    if(!editable && (e.key==='-' || e.key==='_')){
+      e.preventDefault();
+      const rect=previewHost.getBoundingClientRect();
+      zoomAtPoint(1/1.1, rect.width/2, rect.height/2);
+      return;
+    }
+
     if(editable) return;
-    if(e.key==='o' || e.key==='O'){ e.preventDefault(); toggleSheet(); }
-    if(e.key==='Escape'){ toggleSheet(false); }
+    if(e.key==='o' || e.key==='O'){
+      e.preventDefault();
+      const sheet=$("sheet");
+      sheet.setAttribute("aria-hidden", sheet.getAttribute("aria-hidden")==="true" ? "false" : "true");
+      if(sheet.getAttribute("aria-hidden")==="false") syncControlValuesIfOpen();
+    }
+    if(e.key==='Escape'){
+      const sheet=$("sheet"); sheet.setAttribute("aria-hidden","true");
+    }
   });
 }
 
