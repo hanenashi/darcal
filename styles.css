@@ -6,24 +6,20 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 
-/* Live preview fills screen */
+/* Preview */
 .preview{
   position:fixed; inset:0;
   background:#0c0e12;
-  overflow:hidden;                 /* custom pan/zoom */
-  touch-action:none;               /* allow pinch-zoom + pan custom */
+  overflow:hidden;
+  touch-action:none;
 }
-#stage{
-  position:absolute; left:0; top:0;
-  transform-origin:0 0;
-  will-change:transform;
-}
-svg [data-role]{ touch-action:none } /* let handles work on touch */
+#stage{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+svg [data-role]{ touch-action:none }
 .guide{stroke:var(--guide);stroke-width:1.5;stroke-dasharray:6 4;fill:none}
 .handle{fill:#0c1829;stroke:var(--guide);stroke-width:1.5}
 .hud{position:absolute;z-index:10;background:var(--hud);color:#000;padding:2px 6px;border-radius:.35rem;font-size:12px;border:1px solid #b89c2a;pointer-events:none}
 
-/* Rectangular Settings button */
+/* Draggable Settings button */
 .settings-btn{
   position:fixed; z-index:30;
   right:16px; bottom:16px;
@@ -31,13 +27,12 @@ svg [data-role]{ touch-action:none } /* let handles work on touch */
   font-size:15px; font-weight:600;
   background:#1f2a44; color:#fff; border:1px solid #2f416a;
   box-shadow:0 6px 18px rgba(0,0,0,.35);
+  touch-action:none;
 }
 
-/* Floating window (no backdrop) */
-.sheet{
-  position:fixed; inset:0; pointer-events:none;
-}
-.sheet[aria-hidden="false"]{ pointer-events:none; }
+/* Floating window */
+.sheet{ position:fixed; inset:0; pointer-events:none; }
+.sheet[aria-hidden="true"] .sheet-card{ display:none; }   /* hide window when closed */
 .sheet-card{
   position:fixed;
   left:50%; top:50%; transform:translate(-50%,-50%);
@@ -54,35 +49,26 @@ svg [data-role]{ touch-action:none } /* let handles work on touch */
   pointer-events:auto;
 }
 
-/* draggable header */
+/* draggable header (but buttons must stay clickable) */
 .sheet-header{
   display:flex;justify-content:space-between;align-items:center;
   padding:8px 10px; border-bottom:1px solid var(--line);
-  cursor:move; user-select:none;
+  user-select:none;
 }
-.sheet-header h1{font-size:15px;margin:0}
+.sheet-header h1{font-size:15px;margin:0; cursor:move;}
 .sheet-actions{display:flex; gap:6px}
 .icon-btn{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius:.5rem;padding:.3rem .55rem}
 
-.sheet-body{
-  padding:8px 10px;
-  overflow:auto; overscroll-behavior:contain;
-}
+.sheet-body{ padding:8px 10px; overflow:auto; overscroll-behavior:contain; }
 
 /* compact controls */
-h2{
-  font-size:12px; color:var(--muted); margin:10px 0 6px;
-  text-transform:uppercase; letter-spacing:.06em
-}
+h2{ font-size:12px; color:var(--muted); margin:10px 0 6px; text-transform:uppercase; letter-spacing:.06em }
 .row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
 label{min-width:96px;color:var(--muted);font-size:11px}
-
-/* narrower number inputs + compact selects */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 input[type="number"],input[type="text"],select{
   background:#161a20;color:var(--fg);border:1px solid #2a2f39;border-radius:.45rem;
-  padding:.24rem .38rem; min-width:0; font-size:13px;
-  height:30px;
+  padding:.24rem .38rem; min-width:0; font-size:13px; height:30px;
 }
 input[type="number"]{ width:92px }
 input[type="text"]{ width:100% }
@@ -94,7 +80,7 @@ button{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius
 button:active{transform:translateY(1px)}
 .hidden{display:none}
 
-/* dashed separators between logical sections */
+/* section separators */
 .sheet-body section + section{
   border-top:1px dashed #2a2f39;
   padding-top:10px; margin-top:8px;

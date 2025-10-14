@@ -4,22 +4,20 @@
   <meta charset="utf-8" />
   <title>Calendar Maker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Reasonable defaults that render JA cleanly -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
   <link href="styles.css" rel="stylesheet" />
 </head>
 <body>
-  <!-- Fullscreen live preview (stage gets injected inside) -->
   <div id="preview" class="preview">
     <div id="hud" class="hud" style="display:none"></div>
   </div>
 
-  <!-- Rectangular Settings button -->
+  <!-- Draggable Settings button -->
   <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">Settings</button>
 
-  <!-- Floating, draggable, resizable settings window -->
+  <!-- Floating, draggable, resizable settings window (starts CLOSED) -->
   <div id="sheet" class="sheet" aria-hidden="true">
     <div class="sheet-card" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
       <div class="sheet-header" id="sheetDragHandle">
@@ -54,9 +52,7 @@
           <h2>Year & Month</h2>
           <div class="grid2">
             <div class="row"><label>Year</label><input id="year" type="number" step="1"></div>
-            <div class="row"><label>Month</label>
-              <select id="month"></select>
-            </div>
+            <div class="row"><label>Month</label><select id="month"></select></div>
           </div>
           <div class="row">
             <button id="prevM">◀</button>
@@ -142,6 +138,10 @@
             <div class="row"><label>Prev/next numbers</label><input id="showAdj" type="checkbox"></div>
             <div class="row"><label>Adj shade %</label><input id="adjAlpha" type="number" value="55" min="10" max="90" step="5"></div>
           </div>
+          <div class="grid2">
+            <div class="row"><label>Table stroke (pt)</label><input id="tableStrokePt" type="number" value="0.8" step=".1"></div>
+            <div class="row"></div>
+          </div>
         </section>
 
         <section>
@@ -171,6 +171,28 @@
               <option value="center">Center</option>
               <option value="bottom-right">Bottom-Right</option>
             </select>
+          </div>
+        </section>
+
+        <section>
+          <h2>Day Names</h2>
+          <div class="grid2">
+            <div class="row"><label>Font</label>
+              <select id="wdFontSel">
+                <option value="Inter, Arial">Inter</option>
+                <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+                <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
+                <option value="__custom__">Custom…</option>
+              </select>
+            </div>
+            <div class="row"><label>Size (pt)</label><input id="wdSizePt" type="number" value="8" step=".5"></div>
+          </div>
+          <div class="row hidden" id="wdFontCustomRow"><label>Custom font CSS</label><input id="wdFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
+          <div class="grid2">
+            <div class="row"><label>Offset X (mm)</label><input id="wdOffX" type="number" value="0" step=".2"></div>
+            <div class="row"><label>Offset Y (mm)</label><input id="wdOffY" type="number" value="-2" step=".2"></div>
           </div>
         </section>
 

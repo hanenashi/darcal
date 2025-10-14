@@ -27,7 +27,9 @@ const state={
   hdrText:"{MONTH} {YEAR}", hdrFont:"Inter, Arial", hdrSizePt:18, hdrAlign:"left", hdrGap:6,
   cellStrokePt:0.6, cellRadius:2, gutX:2, gutY:2,
   tableLines:false, hideEmpty:false, showAdj:false, adjAlpha:55,
+  tableStrokePt:0.8,
   dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
+  wdFont:"Inter, Arial", wdSizePt:8, wdOffX:0, wdOffY:-2,
   view:{scale:1, tx:12, ty:12, min:0.3, max:4},
   win:{x:null,y:null,w:null,h:null}
 };
@@ -56,7 +58,6 @@ function bindChk(id,key){ const e=$(id); if(!e) return;
 function init(){
   previewHost=$("preview"); hud=$("hud");
 
-  // stage for pan/zoom
   stage=document.createElement("div");
   stage.id="stage";
   previewHost.appendChild(stage);
@@ -96,28 +97,31 @@ function init(){
   bindNum("gutX","gutX"); bindNum("gutY","gutY");
   bindChk("tableLines","tableLines"); bindChk("hideEmpty","hideEmpty");
   bindChk("showAdj","showAdj"); bindNum("adjAlpha","adjAlpha");
+  bindNum("tableStrokePt","tableStrokePt");
 
   // Day fonts
   setupFontPicker("dayFontSel","dayFontCustomRow","dayFontCustom","dayFont");
   bindNum("daySizePt","daySizePt");
   bindNum("dayOffX","dayOffX"); bindNum("dayOffY","dayOffY"); bindSel("dayAnchor","dayAnchor");
 
+  // Weekday names
+  setupFontPicker("wdFontSel","wdFontCustomRow","wdFontCustom","wdFont");
+  bindNum("wdSizePt","wdSizePt"); bindNum("wdOffX","wdOffX"); bindNum("wdOffY","wdOffY");
+
   // Generate all
   const gen=$("generate"); gen && (gen.onclick=()=>openPreviewAndZip());
 
-  // Floating settings window: button + drag + resize + persist
+  // Settings window + button
   setupSettingsWindow();
+  setupSettingsButtonDrag();
 
-  // Back-compat for older HTML that still has the cog FAB (won't throw if missing)
+  // Back-compat shim for old FAB (safe no-op if missing)
   setupFabShim();
 
-  // Keyboard + hotkeys (+/- zoom)
+  // Hotkeys and pan/zoom
   setupHotkeys();
-
-  // Pan/zoom wire-up (mouse + touch)
   wirePanZoom();
 
-  // First paint
   render();
 }
 
@@ -183,14 +187,16 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   const cellW=(gridW-gutX*(cols-1))/cols;
   const cellH=(gridH-gutY*(rows-1))/rows;
 
-  // weekday row
+  /* weekday names */
+  const wdY = gridY0 + mm(state.wdOffY);
   weekdayRow().forEach((d,i)=>{
     const t=document.createElementNS(svgns,"text");
-    t.setAttribute("x",i*(cellW+gutX)+cellW/2);
-    t.setAttribute("y",gridY0-(gutY>2?gutY/2:2));
-    t.setAttribute("font-family",state.dayFont);
-    t.setAttribute("font-size",ptToPx(state.fullNames?9.5:8));
+    t.setAttribute("x",i*(cellW+gutX)+cellW/2 + mm(state.wdOffX));
+    t.setAttribute("y",wdY);
+    t.setAttribute("font-family",state.wdFont);
+    t.setAttribute("font-size",ptToPx(state.wdSizePt));
     t.setAttribute("fill","#333"); t.setAttribute("text-anchor","middle");
+    t.setAttribute("dominant-baseline","alphabetic");
     t.textContent=d; g.appendChild(t);
   });
 
@@ -199,45 +205,81 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   const daysPrev=daysInMonth(y-(mIdx===0?1:0),(mIdx+11)%12);
   let n=1,trailing=1;
 
-  // table lines
+  /* Table vs Card modes */
   if(state.tableLines){
-    const border=document.createElementNS(svgns,"rect");
-    border.setAttribute("x",0); border.setAttribute("y",gridY0);
-    border.setAttribute("width",gridW); border.setAttribute("height",gridH);
-    border.setAttribute("fill","none"); border.setAttribute("stroke","#000");
-    border.setAttribute("stroke-width",ptToPx(state.cellStrokePt)); g.appendChild(border);
-    for(let c=1;c<cols;c++){
-      const x=c*(cellW+gutX)-gutX/2;
-      const v=document.createElementNS(svgns,"line");
-      v.setAttribute("x1",x); v.setAttribute("y1",gridY0); v.setAttribute("x2",x); v.setAttribute("y2",gridY0+gridH);
-      v.setAttribute("stroke","#000"); v.setAttribute("stroke-width",ptToPx(state.cellStrokePt)); g.appendChild(v);
-    }
-    for(let r=1;r<rows;r++){
-      const yLine=gridY0+r*(cellH+gutY)-gutY/2;
-      const h=document.createElementNS(svgns,"line");
-      h.setAttribute("x1",0); h.setAttribute("y1",yLine); h.setAttribute("x2",gridW); h.setAttribute("y2",yLine);
-      h.setAttribute("stroke","#000"); h.setAttribute("stroke-width",ptToPx(state.cellStrokePt)); g.appendChild(h);
+    const strokeW = ptToPx(state.tableStrokePt || state.cellStrokePt);
+
+    if(state.hideEmpty && !state.showAdj){
+      // draw only active days as stroked cells (no fill)
+      for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+          const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
+          const inLead = idx<startOff;
+          const afterEnd = (idx>=startOff+days);
+          const active = !(inLead || afterEnd);
+          if(!active) continue;
+
+          const rect=document.createElementNS(svgns,"rect");
+          rect.setAttribute("x",x); rect.setAttribute("y",y);
+          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+          rect.setAttribute("fill","none");
+          rect.setAttribute("stroke","#000");
+          rect.setAttribute("stroke-width",strokeW);
+          g.appendChild(rect);
+        }
+      }
+    }else{
+      // classic full grid
+      const border=document.createElementNS(svgns,"rect");
+      border.setAttribute("x",0); border.setAttribute("y",gridY0);
+      border.setAttribute("width",gridW); border.setAttribute("height",gridH);
+      border.setAttribute("fill","none"); border.setAttribute("stroke","#000");
+      border.setAttribute("stroke-width",strokeW); g.appendChild(border);
+      for(let c=1;c<cols;c++){
+        const x=c*(cellW+gutX)-gutX/2;
+        const v=document.createElementNS(svgns,"line");
+        v.setAttribute("x1",x); v.setAttribute("y1",gridY0); v.setAttribute("x2",x); v.setAttribute("y2",gridY0+gridH);
+        v.setAttribute("stroke","#000"); v.setAttribute("stroke-width",strokeW); g.appendChild(v);
+      }
+      for(let r=1;r<rows;r++){
+        const yLine=gridY0+r*(cellH+gutY)-gutY/2;
+        const h=document.createElementNS(svgns,"line");
+        h.setAttribute("x1",0); h.setAttribute("y1",yLine); h.setAttribute("x2",gridW); h.setAttribute("y2",yLine);
+        h.setAttribute("stroke","#000"); h.setAttribute("stroke-width",strokeW); g.appendChild(h);
+      }
     }
   }
 
-  // cells + labels
+  // cells + labels (shared)
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
       const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
       let active=false,label="",adj=false;
-      if(idx<startOff){ if(!(state.hideEmpty&&!state.showAdj)){ if(state.showAdj){label=String(daysPrev-(startOff-1-idx)); adj=true;} } }
-      else if(n<=days){ active=true; label=String(n++); }
-      else { if(!(state.hideEmpty&&!state.showAdj)){ if(state.showAdj){label=String(trailing++); adj=true;} } }
 
-      if(!state.tableLines && (!state.hideEmpty || active || state.showAdj)){
-        const rect=document.createElementNS(svgns,"rect");
-        rect.setAttribute("x",x); rect.setAttribute("y",y);
-        rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
-        rect.setAttribute("rx",mm(state.cellRadius));
-        rect.setAttribute("fill",active?"#fff":"#f6f6f6");
-        rect.setAttribute("stroke",state.cellStrokePt>0?"#000":"none");
-        rect.setAttribute("stroke-width",ptToPx(state.cellStrokePt));
-        g.appendChild(rect);
+      if(idx<startOff){
+        if(!(state.hideEmpty&&!state.showAdj)){
+          if(state.showAdj){label=String(daysPrev-(startOff-1-idx)); adj=true;}
+        }
+      } else if(n<=days){
+        active=true; label=String(n++);
+      } else {
+        if(!(state.hideEmpty&&!state.showAdj)){
+          if(state.showAdj){label=String(trailing++); adj=true;}
+        }
+      }
+
+      // non-table mode draws rounded tiles; table mode may already have strokes
+      if(!state.tableLines){
+        if(!state.hideEmpty || active || state.showAdj){
+          const rect=document.createElementNS(svgns,"rect");
+          rect.setAttribute("x",x); rect.setAttribute("y",y);
+          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+          rect.setAttribute("rx",mm(state.cellRadius));
+          rect.setAttribute("fill",active?"#fff":"#f6f6f6");
+          rect.setAttribute("stroke",state.cellStrokePt>0?"#000":"none");
+          rect.setAttribute("stroke-width",ptToPx(state.cellStrokePt));
+          g.appendChild(rect);
+        }
       }
 
       if(label){
@@ -256,7 +298,7 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // interactive overlay (not in export)
+  // interactive overlay
   if(state.showGuides && !exportMode){
     const ov=document.createElementNS(svgns,"g");
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
@@ -340,7 +382,6 @@ function wireDrag(svg,ov){
     x=clamp(x,0,state.pageW-w); y=clamp(y,0,state.pageH-h);
     state.calX=r1(x); state.calY=r1(y); state.calW=r1(w); state.calH=r1(h);
 
-    // fast overlay update
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
     const grect=ov.querySelector('rect.guide');
     grect.setAttribute("width",mm(state.calW)); grect.setAttribute("height",mm(state.calH));
@@ -354,13 +395,11 @@ function wireDrag(svg,ov){
       hh.setAttribute("x",hx-size/2); hh.setAttribute("y",hy-size/2);
     });
 
-    // HUD position + text
     const vb=previewHost.getBoundingClientRect();
     hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
     hud.style.left=(e.clientX - vb.left + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + 12)+"px";
 
-    // mirror into inputs live if window is open
     syncControlValuesIfOpen();
   };
   const end=()=>{active=null;hud.style.display="none";render()};
@@ -370,13 +409,12 @@ function wireDrag(svg,ov){
   svg.addEventListener("pointercancel",end, {passive:true});
 }
 
-/* ===== preview pan & zoom ===== */
+/* ===== pan & zoom ===== */
 function wirePanZoom(){
-  // mouse wheel zoom (cursor-centered), left-drag background to pan
   let isPanning=false, panStart=null;
 
   previewHost.addEventListener("wheel",(e)=>{
-    if(e.ctrlKey) return; // allow browser zoom if the user insists
+    if(e.ctrlKey) return;
     e.preventDefault();
     const rect=previewHost.getBoundingClientRect();
     const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
@@ -384,15 +422,14 @@ function wirePanZoom(){
   }, {passive:false});
 
   previewHost.addEventListener("pointerdown",(e)=>{
-    if(e.target.closest('svg [data-role]')) return; // don't pan when on handles
+    if(e.target.closest('svg [data-role]')) return;
     isPanning=true;
     panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
-    if(previewHost.setPointerCapture) previewHost.setPointerCapture(e.pointerId);
+    previewHost.setPointerCapture && previewHost.setPointerCapture(e.pointerId);
   });
   previewHost.addEventListener("pointermove",(e)=>{
     if(!isPanning) return;
-    const dx=e.clientX - panStart.x;
-    const dy=e.clientY - panStart.y;
+    const dx=e.clientX - panStart.x, dy=e.clientY - panStart.y;
     state.view.tx = panStart.tx + dx;
     state.view.ty = panStart.ty + dy;
     applyView();
@@ -401,7 +438,7 @@ function wirePanZoom(){
   previewHost.addEventListener("pointerup", endPan, {passive:true});
   previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
-  // touch: custom one-finger pan + two-finger pinch
+  // touch pinch + drag
   let touches=new Map();
   previewHost.addEventListener("touchmove",(e)=>{
     if(e.touches.length===1){
@@ -416,16 +453,12 @@ function wirePanZoom(){
       const [a,b]=e.touches;
       const pa=touches.get(a.identifier)||{x:a.clientX,y:a.clientY};
       const pb=touches.get(b.identifier)||{x:b.clientX,y:b.clientY};
-
       const prevDist=Math.hypot(pa.x-pb.x, pa.y-pb.y) || 1;
       const newDist=Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY) || 1;
       const rect=previewHost.getBoundingClientRect();
       const midX=((a.clientX+b.clientX)/2) - rect.left;
       const midY=((a.clientY+b.clientY)/2) - rect.top;
-
-      const factor= newDist/prevDist;
-      zoomAtPoint(factor, midX, midY);
-
+      zoomAtPoint(newDist/prevDist, midX, midY);
       touches.set(a.identifier,{x:a.clientX,y:a.clientY});
       touches.set(b.identifier,{x:b.clientX,y:b.clientY});
     }
@@ -477,7 +510,7 @@ function openPreviewAndZip(){
   w.document.head.appendChild(script);
 }
 
-/* ===== Settings floating window: open/close/drag/resize/persist ===== */
+/* ===== Settings window ===== */
 function setupSettingsWindow(){
   const sheet = $("sheet");
   const win   = document.querySelector(".sheet-card");
@@ -486,9 +519,9 @@ function setupSettingsWindow(){
   const dragHandle = $("sheetDragHandle");
   const reset = $("resetView");
 
-  if (!sheet || !win) return; // hard guard
+  if (!sheet || !win) return;
 
-  // restore last geometry
+  // restore geometry
   try{
     const s = JSON.parse(localStorage.getItem("settings-win")||"{}");
     if (s && s.w && s.h && s.x!=null && s.y!=null){
@@ -500,22 +533,18 @@ function setupSettingsWindow(){
     }
   }catch{}
 
-  function openSheet(){
-    sheet.setAttribute("aria-hidden","false");
-    syncControlValuesIfOpen();
-  }
-  function closeSheet(){
-    sheet.setAttribute("aria-hidden","true");
-  }
+  // open/close
+  function openSheet(){ sheet.setAttribute("aria-hidden","false"); syncControlValuesIfOpen(); }
+  function closeSheet(){ sheet.setAttribute("aria-hidden","true"); }
 
-  // open/close wiring
   btn && btn.addEventListener("click", openSheet);
   closeBtn && closeBtn.addEventListener("click", closeSheet);
 
-  // draggable header
+  // header drag (but don't start drag when clicking actions/buttons)
   if (dragHandle){
     let dragging=false, sx=0, sy=0, sl=0, st=0;
     dragHandle.addEventListener("pointerdown",(e)=>{
+      if (e.target.closest('.sheet-actions') || e.target.tagName==='BUTTON') return;
       const r=win.getBoundingClientRect();
       dragging=true; sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
       dragHandle.setPointerCapture && dragHandle.setPointerCapture(e.pointerId);
@@ -553,12 +582,10 @@ function setupSettingsWindow(){
     let {role,sx,sy,x,y,w,h}=rs;
     let dx=e.clientX - sx, dy=e.clientY - sy;
     const minW=320, minH=280;
-
     if(role.includes("e")) w = Math.max(minW, w + dx);
     if(role.includes("s")) h = Math.max(minH, h + dy);
     if(role.includes("w")){ w = Math.max(minW, w - dx); x = x + dx; }
     if(role.includes("n")){ h = Math.max(minH, h - dy); y = y + dy; }
-
     win.style.width=w+"px"; win.style.height=h+"px";
     win.style.left=x+"px";  win.style.top=y+"px";
     win.style.transform="none";
@@ -577,6 +604,46 @@ function setupSettingsWindow(){
     state.view={...state.view, scale:1, tx:12, ty:12};
     applyView();
   });
+}
+
+/* ===== Draggable Settings button ===== */
+function setupSettingsButtonDrag(){
+  const btn = $("settingsBtn");
+  if(!btn) return;
+
+  // restore pos
+  try{
+    const s = JSON.parse(localStorage.getItem("settings-btn-pos")||"{}");
+    if (s && s.l!=null && s.t!=null){ btn.style.left=s.l+"px"; btn.style.top=s.t+"px"; btn.style.right=""; btn.style.bottom=""; }
+  }catch{}
+
+  let dragging=false, sx=0, sy=0, sl=0, st=0, moved=false;
+  btn.addEventListener("pointerdown",(e)=>{
+    dragging=true; moved=false;
+    const r=btn.getBoundingClientRect();
+    sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
+    btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
+  });
+  window.addEventListener("pointermove",(e)=>{
+    if(!dragging) return;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
+    const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - btn.offsetWidth - 8));
+    const nt=Math.max(8, Math.min(st+dy, window.innerHeight - btn.offsetHeight - 8));
+    btn.style.left=nl+"px"; btn.style.top=nt+"px"; btn.style.right=""; btn.style.bottom="";
+  }, {passive:false});
+  window.addEventListener("pointerup",()=>{
+    if(!dragging) return;
+    dragging=false;
+    const r=btn.getBoundingClientRect();
+    localStorage.setItem("settings-btn-pos", JSON.stringify({l:r.left, t:r.top}));
+    // treat as click only if not dragged
+    if(!moved){
+      const sheet=$("sheet");
+      sheet && sheet.setAttribute("aria-hidden","false");
+      syncControlValuesIfOpen();
+    }
+  }, {passive:true});
 }
 
 /* ===== Back-compat shim for old #fab markup ===== */
@@ -600,8 +667,7 @@ function setupHotkeys(){
     const tag=(e.target && e.target.tagName)||"";
     const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
 
-    // +/- zoom, unless typing in an input
-    if(!editable && (e.key==='+' || e.key==='=')){ // '=' is same key on many layouts
+    if(!editable && (e.key==='+' || e.key==='=')){
       e.preventDefault();
       const rect=previewHost.getBoundingClientRect();
       zoomAtPoint(1.1, rect.width/2, rect.height/2);
