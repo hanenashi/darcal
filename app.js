@@ -29,7 +29,7 @@ const state={
   tableLines:false, hideEmpty:false, showAdj:false, adjAlpha:55,
   dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
   view:{scale:1, tx:12, ty:12, min:0.3, max:4},
-  win:{x:null,y:null,w:null,h:null} // user window geometry
+  win:{x:null,y:null,w:null,h:null}
 };
 
 let previewHost, stage, hud;
@@ -107,6 +107,9 @@ function init(){
 
   // Floating settings window: button + drag + resize + persist
   setupSettingsWindow();
+
+  // Back-compat for older HTML that still has the cog FAB (won't throw if missing)
+  setupFabShim();
 
   // Keyboard + hotkeys (+/- zoom)
   setupHotkeys();
@@ -317,7 +320,6 @@ function wireDrag(svg,ov){
   const onDown=e=>{
     const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
     e.preventDefault();
-    // capture from the actual target for better touch reliability
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
     hud.style.display="block";
@@ -382,8 +384,7 @@ function wirePanZoom(){
   }, {passive:false});
 
   previewHost.addEventListener("pointerdown",(e)=>{
-    // don’t pan when touching a calendar handle
-    if(e.target.closest('svg [data-role]')) return;
+    if(e.target.closest('svg [data-role]')) return; // don't pan when on handles
     isPanning=true;
     panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
     if(previewHost.setPointerCapture) previewHost.setPointerCapture(e.pointerId);
@@ -400,7 +401,7 @@ function wirePanZoom(){
   previewHost.addEventListener("pointerup", endPan, {passive:true});
   previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
-  // touch pinch handled by browser? we do custom to keep cursor-centric logic
+  // touch: custom one-finger pan + two-finger pinch
   let touches=new Map();
   previewHost.addEventListener("touchmove",(e)=>{
     if(e.touches.length===1){
@@ -478,51 +479,64 @@ function openPreviewAndZip(){
 
 /* ===== Settings floating window: open/close/drag/resize/persist ===== */
 function setupSettingsWindow(){
-  const sheet=$("sheet"), win=$(".sheet-card"), btn=$("settingsBtn"), close=$("closeSheet"), dragHandle=$("sheetDragHandle");
-  const reset=$("resetView");
+  const sheet = $("sheet");
+  const win   = document.querySelector(".sheet-card");
+  const btn   = $("settingsBtn");
+  const closeBtn = $("closeSheet");
+  const dragHandle = $("sheetDragHandle");
+  const reset = $("resetView");
 
-  // helper for qs inside this scope
-  function $(sel,root=document){ return root.querySelector(sel); }
+  if (!sheet || !win) return; // hard guard
 
   // restore last geometry
   try{
-    const s=JSON.parse(localStorage.getItem("settings-win")||"{}");
-    if(s && s.w && s.h && s.x!=null && s.y!=null){
-      win.style.width=s.w+"px"; win.style.height=s.h+"px";
-      win.style.left=s.x+"px"; win.style.top=s.y+"px"; win.style.transform="none";
+    const s = JSON.parse(localStorage.getItem("settings-win")||"{}");
+    if (s && s.w && s.h && s.x!=null && s.y!=null){
+      win.style.width  = s.w + "px";
+      win.style.height = s.h + "px";
+      win.style.left   = s.x + "px";
+      win.style.top    = s.y + "px";
+      win.style.transform = "none";
     }
   }catch{}
 
-  // open/close
-  function open(){ sheet.setAttribute("aria-hidden","false"); syncControlValuesIfOpen(); }
-  function close(){ sheet.setAttribute("aria-hidden","true"); }
+  function openSheet(){
+    sheet.setAttribute("aria-hidden","false");
+    syncControlValuesIfOpen();
+  }
+  function closeSheet(){
+    sheet.setAttribute("aria-hidden","true");
+  }
 
-  btn.addEventListener("click", open);
-  close && close.addEventListener("click", close);
+  // open/close wiring
+  btn && btn.addEventListener("click", openSheet);
+  closeBtn && closeBtn.addEventListener("click", closeSheet);
 
-  // drag
-  let dragging=false, sx=0, sy=0, sl=0, st=0;
-  dragHandle.addEventListener("pointerdown",(e)=>{
-    dragging=true; const rect=win.getBoundingClientRect();
-    sx=e.clientX; sy=e.clientY; sl=rect.left; st=rect.top;
-    dragHandle.setPointerCapture && dragHandle.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  });
-  window.addEventListener("pointermove",(e)=>{
-    if(!dragging) return;
-    let nl=sl + (e.clientX - sx);
-    let nt=st + (e.clientY - sy);
-    // constrain within viewport a bit
-    const maxL=window.innerWidth - 80, maxT=window.innerHeight - 80;
-    nl=Math.max(0, Math.min(nl, maxL));
-    nt=Math.max(0, Math.min(nt, maxT));
-    win.style.left=nl+"px"; win.style.top=nt+"px"; win.style.transform="none";
-  }, {passive:false});
-  window.addEventListener("pointerup",()=>{
-    if(!dragging) return; dragging=false; saveWinGeom();
-  }, {passive:true});
+  // draggable header
+  if (dragHandle){
+    let dragging=false, sx=0, sy=0, sl=0, st=0;
+    dragHandle.addEventListener("pointerdown",(e)=>{
+      const r=win.getBoundingClientRect();
+      dragging=true; sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
+      dragHandle.setPointerCapture && dragHandle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    window.addEventListener("pointermove",(e)=>{
+      if(!dragging) return;
+      let nl = sl + (e.clientX - sx);
+      let nt = st + (e.clientY - sy);
+      nl = Math.max(0, Math.min(nl, window.innerWidth  - 80));
+      nt = Math.max(0, Math.min(nt, window.innerHeight - 80));
+      win.style.left = nl + "px";
+      win.style.top  = nt + "px";
+      win.style.transform = "none";
+    }, {passive:false});
+    window.addEventListener("pointerup", ()=>{
+      if(!dragging) return; dragging=false; saveWinGeom();
+    }, {passive:true});
+  }
 
-  // resize via handles
+  // resizers
   const handles = win.querySelectorAll(".win-handle");
   let rs=null;
   handles.forEach(h=>{
@@ -546,7 +560,8 @@ function setupSettingsWindow(){
     if(role.includes("n")){ h = Math.max(minH, h - dy); y = y + dy; }
 
     win.style.width=w+"px"; win.style.height=h+"px";
-    win.style.left=x+"px"; win.style.top=y+"px"; win.style.transform="none";
+    win.style.left=x+"px";  win.style.top=y+"px";
+    win.style.transform="none";
   }, {passive:false});
   const endResize=()=>{ if(!rs) return; rs=null; saveWinGeom(); };
   window.addEventListener("pointerup", endResize, {passive:true});
@@ -554,13 +569,28 @@ function setupSettingsWindow(){
 
   function saveWinGeom(){
     const r=win.getBoundingClientRect();
-    localStorage.setItem("settings-win", JSON.stringify({x:r.left, y:r.top, w:r.width, h:r.height}));
+    localStorage.setItem("settings-win", JSON.stringify({x:r.left,y:r.top,w:r.width,h:r.height}));
   }
 
-  // reset view button
+  // reset view
   reset && reset.addEventListener("click", ()=>{
     state.view={...state.view, scale:1, tx:12, ty:12};
     applyView();
+  });
+}
+
+/* ===== Back-compat shim for old #fab markup ===== */
+function setupFabShim(){
+  const fab = document.getElementById("fab");
+  if (!fab) return;
+  const sheet = document.getElementById("sheet");
+  const closeBtn = document.getElementById("closeSheet");
+  fab.addEventListener("click", ()=>{
+    sheet.setAttribute("aria-hidden","false");
+    syncControlValuesIfOpen();
+  });
+  closeBtn && closeBtn.addEventListener("click", ()=>{
+    sheet.setAttribute("aria-hidden","true");
   });
 }
 
@@ -571,7 +601,7 @@ function setupHotkeys(){
     const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
 
     // +/- zoom, unless typing in an input
-    if(!editable && (e.key==='+' || e.key==='=')){ // = is same key on many layouts
+    if(!editable && (e.key==='+' || e.key==='=')){ // '=' is same key on many layouts
       e.preventDefault();
       const rect=previewHost.getBoundingClientRect();
       zoomAtPoint(1.1, rect.width/2, rect.height/2);

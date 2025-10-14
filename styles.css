@@ -23,7 +23,7 @@ svg [data-role]{ touch-action:none } /* let handles work on touch */
 .handle{fill:#0c1829;stroke:var(--guide);stroke-width:1.5}
 .hud{position:absolute;z-index:10;background:var(--hud);color:#000;padding:2px 6px;border-radius:.35rem;font-size:12px;border:1px solid #b89c2a;pointer-events:none}
 
-/* Rectangular Settings button (matches header tone) */
+/* Rectangular Settings button */
 .settings-btn{
   position:fixed; z-index:30;
   right:16px; bottom:16px;
@@ -35,9 +35,9 @@ svg [data-role]{ touch-action:none } /* let handles work on touch */
 
 /* Floating window (no backdrop) */
 .sheet{
-  position:fixed; inset:0; pointer-events:none; /* container exists only to hold the window */
+  position:fixed; inset:0; pointer-events:none;
 }
-.sheet[aria-hidden="false"]{ pointer-events:none; } /* no overlay */
+.sheet[aria-hidden="false"]{ pointer-events:none; }
 .sheet-card{
   position:fixed;
   left:50%; top:50%; transform:translate(-50%,-50%);
@@ -51,7 +51,7 @@ svg [data-role]{ touch-action:none } /* let handles work on touch */
   overflow:hidden;
   font-size:13px;
   box-shadow:0 12px 40px rgba(0,0,0,.55);
-  pointer-events:auto;             /* the window is interactive */
+  pointer-events:auto;
 }
 
 /* draggable header */
@@ -84,9 +84,9 @@ input[type="number"],input[type="text"],select{
   padding:.24rem .38rem; min-width:0; font-size:13px;
   height:30px;
 }
-input[type="number"]{ width:92px }          /* much narrower */
+input[type="number"]{ width:92px }
 input[type="text"]{ width:100% }
-select{appearance:auto; max-width:220px}    /* tighter dropdowns */
+select{appearance:auto; max-width:220px}
 input[type="checkbox"]{transform:translateY(1px)}
 
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
