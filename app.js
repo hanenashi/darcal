@@ -98,8 +98,9 @@ function init(){
   // Generate all
   const gen=$("generate"); gen && (gen.onclick=()=>openPreviewAndZip());
 
-  // FAB + sheet
+  // FAB + sheet + hotkeys
   setupFabAndSheet();
+  setupHotkeys();
 
   // First paint
   render();
@@ -311,7 +312,7 @@ function wireDrag(svg,ov){
     else if(active.role==="se"){w=clamp(w+dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
     else if(active.role==="ne"){w=clamp(w+dxmm,minW,9999);y+=dymm;h=clamp(h-dymm,minH,9999)}
     else if(active.role==="sw"){x+=dxmm;w=clamp(w-dxmm,minW,9999);h=clamp(h+dymm,minH,9999)}
-    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm,minH,9999)}
+    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=clamp(w-dxmm,minW,9999);h=clamp(h-dymm|minH,9999)}
     x=clamp(x,0,state.pageW-w); y=clamp(y,0,state.pageH-h);
     state.calX=r1(x); state.calY=r1(y); state.calW=r1(w); state.calH=r1(h);
 
@@ -396,29 +397,49 @@ function setupFabAndSheet(){
   };
   const end=()=>{
     if(!dragging) return; dragging=false;
-    localStorage.setItem("fab-pos", JSON.stringify({l:fABcs(fab,"left"), t:fABcs(fab,"top")}));
+    localStorage.setItem("fab-pos", JSON.stringify({l:getCS(fab,"left"), t:getCS(fab,"top")}));
   };
   fab.addEventListener("pointerdown", start);
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", end);
-  function fABcs(el,prop){ return window.getComputedStyle(el).getPropertyValue(prop); }
+  function getCS(el,prop){ return window.getComputedStyle(el).getPropertyValue(prop); }
 
-  // tap to open/close sheet (ignore if dragging moved > a few px)
+  // tap to open/close sheet (ignore if dragging > 6px)
   let pressPos=null;
   fab.addEventListener("pointerdown", e=>{ pressPos={x:e.clientX,y:e.clientY}; }, {capture:true});
   fab.addEventListener("pointerup", e=>{
     if(!pressPos) return;
     const moved=Math.hypot(e.clientX-pressPos.x, e.clientY-pressPos.y);
     pressPos=null;
-    if(moved<6){ // treat as click
-      sheet.setAttribute("aria-hidden", sheet.getAttribute("aria-hidden")==="true"?"false":"true");
-    }
+    if(moved<6){ toggleSheet(); }
   });
 
   close && (close.onclick=()=>sheet.setAttribute("aria-hidden","true"));
-  // Dismiss by tapping backdrop (but not the card)
+
+  // Dismiss by tapping backdrop (not the card)
   sheet.addEventListener("click", e=>{
     if(e.target===sheet) sheet.setAttribute("aria-hidden","true");
+  });
+}
+
+function toggleSheet(force){
+  const sheet=$("sheet");
+  const want = (typeof force==="boolean") ? force : (sheet.getAttribute("aria-hidden")==="true");
+  sheet.setAttribute("aria-hidden", want ? "false" : "true");
+  // optional: focus a sensible control when opening
+  if (want){
+    const year=$("year"); year && year.focus({preventScroll:true});
+  }
+}
+
+/* ===== hotkeys: 'O' to toggle options; Esc to close ===== */
+function setupHotkeys(){
+  document.addEventListener("keydown", (e)=>{
+    const tag=(e.target && e.target.tagName)||"";
+    const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || e.target.isContentEditable;
+    if(editable) return;                // don’t hijack typing in fields
+    if(e.key==='o' || e.key==='O'){ e.preventDefault(); toggleSheet(); }
+    if(e.key==='Escape'){ toggleSheet(false); }
   });
 }
 
