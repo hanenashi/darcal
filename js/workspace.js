@@ -155,7 +155,7 @@ function wireDrag(svg,ov){
   const onDown=e=>{
     const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
     e.preventDefault();
-    blockManipulating = true; // prevent canvas pan during move/resize
+    blockManipulating = true;
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
     hud.style.display="block";

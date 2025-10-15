@@ -5,8 +5,19 @@ function holidayNamesFor(y,m,d){
   const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
   const H = state.holidays || {};
   const R = (state.holidayRegion||"").toUpperCase();
+
+  // ANY => merge all regions; specific region => just that; always include __ALL__ and flat keys
+  let regions=[];
+  if(!R || R==="ANY" || R==="*"){
+    regions = Object.keys(H).filter(k=>k!=="__ALL__");
+  }else if(H[R]){
+    regions=[R];
+  }
+
   let out=[];
-  if (H[R] && H[R][key]) out = out.concat(H[R][key]);
+  for(const reg of regions){
+    if(H[reg] && H[reg][key]) out = out.concat(H[reg][key]);
+  }
   if (H["__ALL__"] && H["__ALL__"][key]) out = out.concat(H["__ALL__"][key]);
   if (Array.isArray(H[key])) out = out.concat(H[key]); // flat map support
   return out;
@@ -156,6 +167,7 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
+      // Holidays overlay (front)
       if(state.holidayEnabled && active){
         const names = holidayNamesFor(y, mIdx, dayNum);
         if(names.length){
@@ -176,7 +188,7 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // Guidelines (front) when rulers toggled
+  // Guidelines (front) tied to rulers toggle
   if(state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");

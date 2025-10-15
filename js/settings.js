@@ -6,12 +6,16 @@ let onChangeCb=null;
 
 export function initSettings({onChange}){
   onChangeCb = onChange;
-  const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; ms.addEventListener("change", updateHolidayStatusInfo); }
-  const yr=$("year"); if(yr){ yr.value=state.year; yr.addEventListener("input", updateHolidayStatusInfo); }
 
+  // Month/Year
+  const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; ms.addEventListener("change", ()=>{ onChangeCb(); updateHolidayStatusInfo(); }); }
+  const yr=$("year"); if(yr){ yr.value=state.year; yr.addEventListener("input", ()=>{ onChangeCb(); updateHolidayStatusInfo(); }); }
+
+  // Language & start-of-week
   bindSel("lang","lang"); bindChk("fullNames","fullNames");
   bindSel("firstDay","firstDay",true);
 
+  // Page presets
   const pp=$("pagePreset");
   bindSel("pagePreset","preset");
   pp && pp.addEventListener("change",()=>{
@@ -20,27 +24,33 @@ export function initSettings({onChange}){
   });
   bindNum("pageW","pageW"); bindNum("pageH","pageH");
 
+  // Calendar block
   ["calX","calY","calW","calH"].forEach(k=>bindNum(k,k));
   bindChk("showGuides","showGuides");
 
+  // Navigation
   bindNum("year","year"); bindSel("month","month",true);
   $("prevM")?.addEventListener("click",()=>{ state.month=(state.month+11)%12; $("month").value=state.month; onChangeCb(); updateHolidayStatusInfo(); });
   $("nextM")?.addEventListener("click",()=>{ state.month=(state.month+1)%12; $("month").value=state.month; onChangeCb(); updateHolidayStatusInfo(); });
 
+  // Header
   setupFontPicker("hdrFontSel","hdrFontCustomRow","hdrFontCustom","hdrFont");
   bindNum("hdrSize","hdrSizePt"); bindSel("hdrAlign","hdrAlign"); bindNum("hdrGap","hdrGap");
   bindTxt("hdrText","hdrText");
 
+  // Grid & Cells
   bindNum("cellStrokePt","cellStrokePt"); bindNum("cellRadius","cellRadius");
   bindNum("gutX","gutX"); bindNum("gutY","gutY");
   bindChk("tableLines","tableLines"); bindChk("hideEmpty","hideEmpty");
   bindChk("showAdj","showAdj"); bindNum("adjAlpha","adjAlpha");
   bindNum("tableStrokePt","tableStrokePt");
 
+  // Day numbers
   setupFontPicker("dayFontSel","dayFontCustomRow","dayFontCustom","dayFont");
   bindNum("daySizePt","daySizePt");
   bindNum("dayOffX","dayOffX"); bindNum("dayOffY","dayOffY"); bindSel("dayAnchor","dayAnchor");
 
+  // Weekday labels
   setupFontPicker("wdFontSel","wdFontCustomRow","wdFontCustom","wdFont");
   bindNum("wdSizePt","wdSizePt"); bindNum("wdOffX","wdOffX"); bindNum("wdOffY","wdOffY");
 
@@ -48,18 +58,19 @@ export function initSettings({onChange}){
   const chkRulers = $("chkRulers"); chkRulers.checked = state.rulersOn;
   chkRulers.addEventListener("change", ()=>{ state.rulersOn = chkRulers.checked; render(); drawRulers(); });
 
-  // Holidays UI
+  // Holidays
   bindChk("holidayEnabled","holidayEnabled");
   $("holidayEnabled").addEventListener("change", updateHolidayStatusInfo);
+
   bindTxt("holidayRegion","holidayRegion");
-  $("holidayRegion").addEventListener("input", updateHolidayStatusInfo);
+  $("holidayRegion").addEventListener("input", ()=>{ onChangeCb(); updateHolidayStatusInfo(); });
+
   setupFontPicker("holFontSel","holFontCustomRow","holFontCustom","holidayFont");
   bindNum("holSizePt","holidaySizePt");
   $("holColor")?.addEventListener("input",()=>{ state.holidayColor = $("holColor").value; onChangeCb(); });
   bindNum("holOffX","holidayOffX");
   bindNum("holOffY","holidayOffY");
 
-  // Load from local file -> populate textarea + apply
   $("holidayFile")?.addEventListener("change",(e)=>{
     const f=e.target.files?.[0]; if(!f) return;
     const reader=new FileReader();
@@ -71,12 +82,10 @@ export function initSettings({onChange}){
     reader.readAsText(f);
   });
 
-  // Apply from textarea
   $("applyHolidayJSON")?.addEventListener("click",()=>{
     tryApplyHolidayJSON($("holidayText")?.value||"", {source:"textarea"});
   });
 
-  // Try fetch default holidays.json at root
   $("loadDefaultHolidayJSON")?.addEventListener("click", async ()=>{
     try{
       setStatus("Loading holidays.json …");
@@ -105,7 +114,7 @@ export function initSettings({onChange}){
   updateHolidayStatusInfo();
 }
 
-/* ===== SNAP open/close (align to button's top-left) ===== */
+/* ===== SNAP open/close (snap to button TL) ===== */
 export function openSheetSnap(){
   const sheet=$("sheet"); const card=document.querySelector(".sheet-card"); const btn=$("settingsBtn");
   const br=btn.getBoundingClientRect();
@@ -196,7 +205,7 @@ function setupWindowResize(){
   window.addEventListener("pointercancel", end, {passive:true});
 }
 
-/* ===== Settings button drag + true click toggle ===== */
+/* ===== Settings button drag + click toggle ===== */
 function setupSettingsButtonDragToggle(){
   const btn = $("settingsBtn"); if(!btn) return;
   try{
@@ -305,43 +314,66 @@ function normalizeHolidayObject(data){
     if(/^\d{4}-\d{2}-\d{2}$/.test(firstKey)){
       return { "__ALL__": data };
     }
-    return data; // assume map of regions
+    return data; // assume {REGION:{date:[names]}}
   }
   return {};
 }
 function setHolidayObject(obj, {autoEnable=false, source}={}){
   state.holidays = obj || {};
-  const regions = Object.keys(state.holidays).filter(k=>k!=="__ALL__");
-  if(regions.length===1){
-    state.holidayRegion = regions[0];
-    const regionInput = $("holidayRegion"); if(regionInput) regionInput.value = state.holidayRegion;
+
+  // Build datalist options from regions
+  const list = $("holidayRegionsList");
+  if(list){
+    list.innerHTML = "";
+    const regions = Object.keys(state.holidays).filter(k=>k!=="__ALL__").sort();
+    const optAny = document.createElement("option"); optAny.value = "ANY"; list.appendChild(optAny);
+    for(const r of regions){ const o=document.createElement("option"); o.value=r; list.appendChild(o); }
   }
+
+  if(!state.holidayRegion) state.holidayRegion = "ANY";
+  const regionInput = $("holidayRegion"); if(regionInput) regionInput.value = state.holidayRegion;
+
   if(autoEnable){
     state.holidayEnabled = true;
     const chk = $("holidayEnabled"); if(chk) chk.checked = true;
   }
+
   const ta = $("holidayText");
-  if(ta && source){ try{ ta.value = JSON.stringify(denormalizeForTextarea(state.holidays), null, 2); }catch{} }
+  if(ta && source){ try{ ta.value = JSON.stringify(state.holidays, null, 2); }catch{} }
 
   onChangeCb();
   updateHolidayStatusInfo();
 }
-function denormalizeForTextarea(obj){ return obj; }
 function countRegionTotal(obj, region){
-  const r = (obj||{})[region] || {};
-  return Object.keys(r).length;
+  if(!obj) return 0;
+  if(!region || region==="ANY" || region==="*"){
+    let n=0;
+    for(const k of Object.keys(obj)){ if(k==="__ALL__") continue; n += Object.keys(obj[k]).length; }
+    n += Object.keys(obj["__ALL__"]||{}).length;
+    return n;
+  }
+  const r = obj[region] || {};
+  return Object.keys(r).length + Object.keys(obj["__ALL__"]||{}).length;
 }
 function countRegionMonth(obj, region, year, month){
-  const r = (obj||{})[region] || {};
   const prefix = `${year}-${pad2(month+1)}-`;
   let n=0;
-  for(const k of Object.keys(r)){ if(k.startsWith(prefix)) n++; }
-  const all = (obj||{}).__ALL__ || {};
-  for(const k of Object.keys(all)){ if(k.startsWith(prefix)) n++; }
+  if(!obj) return 0;
+
+  const countMap = map=>{
+    for(const k of Object.keys(map)){ if(k.startsWith(prefix)) n++; }
+  };
+
+  if(!region || region==="ANY" || region==="*"){
+    for(const k of Object.keys(obj)){ if(k==="__ALL__") continue; countMap(obj[k]); }
+  }else{
+    countMap(obj[region]||{});
+  }
+  countMap(obj["__ALL__"]||{});
   return n;
 }
 function updateHolidayStatusInfo(){
-  const reg = (state.holidayRegion||"").toUpperCase();
+  const reg = (state.holidayRegion||"").toUpperCase() || "ANY";
   const enabled = state.holidayEnabled;
   const total = countRegionTotal(state.holidays, reg);
   const monthCount = countRegionMonth(state.holidays, reg, state.year, state.month);
@@ -349,7 +381,7 @@ function updateHolidayStatusInfo(){
     setStatus("No holidays loaded.");
     return;
   }
-  let msg = `Loaded ${total} dates for ${reg || "—"}`;
+  let msg = (reg==="ANY") ? `Loaded ${total} dates (ALL regions)` : `Loaded ${total} dates for ${reg}`;
   msg += `  •  ${monthCount} in ${state.year}-${pad2(state.month+1)}`;
   if(!enabled) msg += "  (toggle ‘Show holidays’ to display)";
   setStatus(msg, true);

@@ -36,11 +36,11 @@ export const state={
 
   // Holidays
   holidayEnabled:false,
-  holidayRegion:"JP",
+  holidayRegion:"ANY",       // region-agnostic by default
   holidayFont:"Inter, Arial",
   holidaySizePt:7,
   holidayColor:"#c82020",
   holidayOffX:1.5,
   holidayOffY:-1.5,
-  holidays:{} // { "JP": { "YYYY-MM-DD": ["Name"] }, "US": {...}, "CZ": {...}, "__ALL__": {...} }
+  holidays:{} // { "REGION": { "YYYY-MM-DD": ["Name"] }, "__ALL__": {...} }
 };

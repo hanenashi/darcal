@@ -44,7 +44,7 @@ svg [data-role]{ touch-action:none }
 .sheet-header{
   display:flex;justify-content:space-between;align-items:center;
   padding:8px 10px; border-bottom:1px solid var(--line); user-select:none;
-  touch-action:none; /* important for touch-drag stability */
+  touch-action:none;
 }
 .sheet-header h1{font-size:15px;margin:0; cursor:pointer;}
 .sheet-actions{display:flex; gap:6px; align-items:center}
