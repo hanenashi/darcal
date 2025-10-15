@@ -37,6 +37,7 @@ export function drawRulers(){
     const worldRight = (rulerTop.width - (tx - leftW))/sc;
     let mmStart = Math.floor(worldLeft / PX_PER_MM);
     const mmEnd = Math.ceil(worldRight / PX_PER_MM);
+
     const minor = Math.max(6, Math.min(10, Math.round(pxPerMm*0.5)));
     for(let mm=mmStart; mm<=mmEnd; mm++){
       const xScreen = (mm*PX_PER_MM*sc) + (tx - leftW);
@@ -47,6 +48,7 @@ export function drawRulers(){
       ctxT.moveTo(Math.round(xScreen)+0.5, topH);
       ctxT.lineTo(Math.round(xScreen)+0.5, topH - len);
       ctxT.stroke();
+
       if(isMajor){
         ctxT.fillStyle=text; ctxT.font="10px system-ui, Arial";
         ctxT.textAlign="center"; ctxT.textBaseline="top";
@@ -63,6 +65,7 @@ export function drawRulers(){
     const worldBot = ((H-topH) - (ty - topH))/sc;
     let mmStartY = Math.floor(worldTop / PX_PER_MM);
     const mmEndY = Math.ceil(worldBot / PX_PER_MM);
+
     const minor = Math.max(6, Math.min(10, Math.round(pxPerMm*0.5)));
     for(let mm=mmStartY; mm<=mmEndY; mm++){
       const yScreen = (mm*PX_PER_MM*sc) + (ty - topH);
@@ -73,6 +76,7 @@ export function drawRulers(){
       ctxL.moveTo(leftW, Math.round(yScreen)+0.5);
       ctxL.lineTo(leftW - len, Math.round(yScreen)+0.5);
       ctxL.stroke();
+
       if(isMajor){
         ctxL.save();
         ctxL.translate(2, Math.round(yScreen)+2);

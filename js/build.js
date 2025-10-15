@@ -146,6 +146,7 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
+  // Guidelines front (magenta), tied to rulers toggle
   if(state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");

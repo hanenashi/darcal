@@ -11,16 +11,19 @@ export function initWorkspace(){
   stage=document.createElement("div"); stage.id="stage"; previewHost.appendChild(stage);
 
   wirePanZoom();
-  document.addEventListener("pointerup",(e)=>{
+
+  // close only on *click* outside (not during drag/zoom)
+  document.addEventListener("click",(e)=>{
     const win=document.querySelector(".sheet-card");
     const sheet=$("sheet");
     const btn=$("settingsBtn");
     if(sheet.dataset.open==="true"){
       const path=e.composedPath();
       const inside = path.includes(win) || path.includes(btn);
-      if(!inside){ sheet.dataset.open="false"; sheet.setAttribute("inert",""); btn.focus(); }
+      if(!inside){ sheet.dataset.open="false"; sheet.setAttribute("inert",""); btn.style.display='block'; btn.focus(); }
     }
   });
+
   window.addEventListener("resize", ()=>{ if(!state.view.userMoved) centerView(); drawRulers(); });
 }
 
@@ -59,6 +62,7 @@ export function render(){
       h.style.cursor=({"nw":"nwse-resize","se":"nwse-resize","ne":"nesw-resize","sw":"nesw-resize","n":"ns-resize","s":"ns-resize","w":"ew-resize","e":"ew-resize"})[name];
       ov.appendChild(h);
 
+      // fat touch targets
       const fat=document.createElementNS(svgns,"rect");
       const pad=mm(6);
       fat.setAttribute("x",x-pad); fat.setAttribute("y",y-pad);
@@ -132,6 +136,7 @@ function wirePanZoom(){
   previewHost.addEventListener("pointerup", endPan, {passive:true});
   previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
+  // touch: 1-finger pan, 2-finger pinch zoom
   let touches=new Map();
   previewHost.addEventListener("touchmove",(e)=>{
     if(blockManipulating) return;
@@ -155,7 +160,7 @@ function wirePanZoom(){
       const midY=((a.clientY+b.clientY)/2) - rect.top;
       zoomAtPoint(newDist/prevDist, midX, midY);
       touches.set(a.identifier,{x:a.clientX,y:a.clientY});
-      touches.set(b.identifier,{x:b.clientX,y:b.clientY});
+      touches.set(b.identifier},{x:b.clientX,y:b.clientY});
       state.view.userMoved=true;
     }
   }, {passive:false});
@@ -169,6 +174,7 @@ function wireDrag(svg,ov){
     e.preventDefault();
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
+    hud.style.display="block";
   };
   const onMove=e=>{
     if(!active)return;
@@ -198,11 +204,11 @@ function wireDrag(svg,ov){
       hh.setAttribute("x",hx-size/2); hh.setAttribute("y",hy-size/2);
     });
     const vb=previewHost.getBoundingClientRect();
-    const hud=$('hud'); hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
+    hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
     hud.style.left=(e.clientX - vb.left + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + 12)+"px";
   };
-  const end=()=>{active=null; $('hud').style.display="none"; render();};
+  const end=()=>{active=null; hud.style.display="none"; render();};
   ov.addEventListener("pointerdown",onDown, {passive:false});
   svg.addEventListener("pointermove",onMove, {passive:false});
   svg.addEventListener("pointerup",end, {passive:true});

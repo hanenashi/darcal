@@ -45,17 +45,13 @@ export function initSettings({onChange, onOpen, onClose}){
   bindNum("wdSizePt","wdSizePt"); bindNum("wdOffX","wdOffX"); bindNum("wdOffY","wdOffY");
 
   const chkRulers = $("chkRulers"); chkRulers.checked = state.rulersOn;
-  chkRulers.addEventListener("change", ()=>{ state.rulersOn = chkRulers.checked; drawRulers(); });
+  chkRulers.addEventListener("change", ()=>{ state.rulersOn = chkRulers.checked; render(); drawRulers(); });
 
   $("generate")?.addEventListener("click",()=>openPreviewAndZip());
 
-  $("settingsBtn").addEventListener("pointerup", (e)=>{
-    if(e.pointerType==='mouse' && e.button!==0) return;
-    const isOpen = $("sheet").dataset.open==="true";
-    if (!isOpen) openSheetSnap(); else closeSheetSnap();
-  });
+  // Click-to-open only (no open on drag)
+  setupSettingsButtonDragToggle();
 
-  setupSettingsButtonDrag();
   setupWindowDrag();
   setupWindowResize();
 
@@ -64,23 +60,33 @@ export function initSettings({onChange, onOpen, onClose}){
   $("sheetTitle").addEventListener("click", ()=> closeSheetSnap());
 }
 
-/* ===== SNAP open/close aligned to button's top-left ===== */
+/* ===== SNAP open/close (align to button's top-left) ===== */
 export function openSheetSnap(){
   const sheet=$("sheet"); const card=document.querySelector(".sheet-card"); const btn=$("settingsBtn");
   const br=btn.getBoundingClientRect();
+  // hide the button while open
+  btn.style.display='none';
   card.style.left = br.left + "px";
   card.style.top  = br.top + "px";
   sheet.dataset.open="true";
   sheet.removeAttribute("inert");
-  // focus first interactive
   setTimeout(()=>{ $("closeSheet")?.focus({preventScroll:true}); }, 0);
 }
 export function closeSheetSnap(){
-  const sheet=$("sheet"); const btn=$("settingsBtn");
-  // Move focus out of the dialog before hiding to avoid aria-hidden warning
+  const sheet=$("sheet"); const btn=$("settingsBtn"); const card=document.querySelector(".sheet-card");
+  // update button position to where the card is now
+  const cr = card.getBoundingClientRect();
+  const nl = Math.max(8, Math.min(cr.left, window.innerWidth - btn.offsetWidth - 8));
+  const nt = Math.max(8, Math.min(cr.top,  window.innerHeight - btn.offsetHeight - 8));
+  btn.style.left = nl + "px"; btn.style.top = nt + "px";
+  btn.style.right="auto"; btn.style.bottom="auto";
+  btn.style.display='block';
+
+  // focus back to button, then hide dialog
   btn.focus({preventScroll:true});
   sheet.dataset.open="false";
   sheet.setAttribute("inert","");
+  try{ localStorage.setItem("settings-btn-pos", JSON.stringify({l:nl, t:nt})); }catch{}
 }
 
 /* ===== window drag ===== */
@@ -139,7 +145,6 @@ function setupWindowResize(){
     if(role.includes('w')){ nl = left + dx; nw = Math.max(minW, w - dx); }
     if(role.includes('n')){ nt = top  + dy; nh = Math.max(minH, h - dy); }
 
-    // keep on screen
     nl = Math.max(0, Math.min(nl, window.innerWidth - 100));
     nt = Math.max(0, Math.min(nt, window.innerHeight - 100));
 
@@ -151,16 +156,18 @@ function setupWindowResize(){
   window.addEventListener("pointercancel", end, {passive:true});
 }
 
-/* draggable Settings button */
-function setupSettingsButtonDrag(){
+/* ===== Settings button drag + true click toggle ===== */
+function setupSettingsButtonDragToggle(){
   const btn = $("settingsBtn"); if(!btn) return;
   try{
     const s = JSON.parse(localStorage.getItem("settings-btn-pos")||"{}");
     if (s && s.l!=null && s.t!=null){ btn.style.left=s.l+"px"; btn.style.top=s.t+"px"; btn.style.right="auto"; btn.style.bottom="auto"; }
   }catch{}
-  let dragging=false, sx=0, sy=0, sl=0, st=0;
+  let dragging=false, moved=false, sx=0, sy=0, sl=0, st=0;
+  const TH=4;
+
   btn.addEventListener("pointerdown",(e)=>{
-    dragging=true;
+    dragging=true; moved=false;
     const r=btn.getBoundingClientRect();
     sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
     btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
@@ -170,6 +177,7 @@ function setupSettingsButtonDrag(){
   window.addEventListener("pointermove",(e)=>{
     if(!dragging) return;
     const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(Math.abs(dx)>TH || Math.abs(dy)>TH) moved=true;
     const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - btn.offsetWidth - 8));
     const nt=Math.max(8, Math.min(st+dy, window.innerHeight - btn.offsetHeight - 8));
     btn.style.left=nl+"px"; btn.style.top=nt+"px";
@@ -178,8 +186,19 @@ function setupSettingsButtonDrag(){
     if(!dragging) return;
     dragging=false; btn.classList.remove("dragging");
     const r=btn.getBoundingClientRect();
-    localStorage.setItem("settings-btn-pos", JSON.stringify({l:r.left, t:r.top}));
+    try{ localStorage.setItem("settings-btn-pos", JSON.stringify({l:r.left, t:r.top})); }catch{}
   }, {passive:true});
+
+  // Actual toggle only on click (and only if not dragged)
+  btn.addEventListener("click",(e)=>{
+    if(moved) { e.preventDefault(); e.stopPropagation(); moved=false; return; }
+    const isOpen = $("sheet").dataset.open==="true";
+    if (!isOpen){
+      openSheetSnap();
+    } else {
+      closeSheetSnap();
+    }
+  });
 }
 
 /* ===== bindings ===== */

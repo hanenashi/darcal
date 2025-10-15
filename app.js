@@ -31,7 +31,9 @@ function setupHotkeys(){
     }
     if(e.key==='Escape'){ closeSheetSnap(); return; }
     if(e.key==='r' || e.key==='R'){
-      state.rulersOn = !state.rulersOn; document.getElementById('chkRulers').checked = state.rulersOn; drawRulers(); return;
+      state.rulersOn = !state.rulersOn;
+      const chk = document.getElementById('chkRulers'); if (chk) chk.checked = state.rulersOn;
+      render(); drawRulers(); return;
     }
   });
 }
