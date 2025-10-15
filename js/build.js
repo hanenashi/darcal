@@ -102,71 +102,67 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     if (state.hideEmpty && !state.showAdj){
       for(let r=0;r<rows;r++){
         for(let c=0;c<cols;c++){
-          const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
-          const inLead = idx<startOff;
-          const afterEnd = (idx>=startOff+days);
-          const active = !(inLead || afterEnd);
-          if(!active) continue;
+          const idx=r*cols+c;
+          const x=c*(cellW+gutX);
+          const cellY=gridY0 + r*(cellH+gutY);
+          const dayNum = idx-startOff+1;
+          let label=null,adj=false;
+          if(idx<startOff){
+            if(!state.showAdj) continue;
+            label=String(daysPrev-(startOff-idx-1)); adj=true;
+          }else if(dayNum>days){
+            if(!state.showAdj) continue;
+            label=String(trailing++); adj=true;
+          }else{
+            label=String(n++); adj=false;
+          }
           const rect=document.createElementNS(svgns,"rect");
-          rect.setAttribute("x",x); rect.setAttribute("y",y);
+          rect.setAttribute("x",x); rect.setAttribute("y",cellY);
           rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+          rect.setAttribute("rx",mm(state.cellRadius)); rect.setAttribute("ry",mm(state.cellRadius));
           rect.setAttribute("fill","none");
-          rect.setAttribute("stroke","#000");
+          rect.setAttribute("stroke",adj?`rgba(0,0,0,${Math.min(0.9,Math.max(0.1,state.adjAlpha/100))})`:"#000");
           rect.setAttribute("stroke-width",strokeW);
           g.appendChild(rect);
         }
       }
-    } else {
-      const border=document.createElementNS(svgns,"rect");
-      border.setAttribute("x",0); border.setAttribute("y",gridY0);
-      border.setAttribute("width",gridW); border.setAttribute("height",gridH);
-      border.setAttribute("fill","none"); border.setAttribute("stroke","#000");
-      border.setAttribute("stroke-width",strokeW); g.appendChild(border);
-      for(let c=1;c<cols;c++){
-        const x=c*(cellW+gutX)-gutX/2;
-        const v=document.createElementNS(svgns,"line");
-        v.setAttribute("x1",x); v.setAttribute("y1",gridY0); v.setAttribute("x2",x); v.setAttribute("y2",gridY0+gridH);
-        v.setAttribute("stroke","#000"); v.setAttribute("stroke-width",strokeW); g.appendChild(v);
-      }
-      for(let r=1;r<rows;r++){
-        const yLine=gridY0+r*(cellH+gutY)-gutY/2;
-        const h=document.createElementNS(svgns,"line");
-        h.setAttribute("x1",0); h.setAttribute("y1",yLine); h.setAttribute("x2",gridW); h.setAttribute("y2",yLine);
-        h.setAttribute("stroke","#000"); h.setAttribute("stroke-width",strokeW); g.appendChild(h);
+    }else{
+      for(let r=0;r<rows;r++){
+        for(let c=0;c<cols;c++){
+          const x=c*(cellW+gutX);
+          const cellY=gridY0 + r*(cellH+gutY);
+          const rect=document.createElementNS(svgns,"rect");
+          rect.setAttribute("x",x); rect.setAttribute("y",cellY);
+          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+          rect.setAttribute("rx",mm(state.cellRadius)); rect.setAttribute("ry",mm(state.cellRadius));
+          rect.setAttribute("fill","none");
+          rect.setAttribute("stroke",`rgba(0,0,0,${Math.min(0.9,Math.max(0.1,state.adjAlpha/100))})`);
+          rect.setAttribute("stroke-width",strokeW);
+          g.appendChild(rect);
+        }
       }
     }
   }
 
-  // Cells & day numbers + holidays
+  // Day numbers
+  n=1; trailing=1;
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
-      const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
-      let active=false, label="", adj=false, dayNum=null;
-
+      const idx=r*cols+c;
+      const x=c*(cellW+gutX);
+      const cellY=gridY0 + r*(cellH+gutY);
+      const dayNum=idx-startOff+1;
+      let label=null,adj=false,active=true;
       if(idx<startOff){
-        if(!(state.hideEmpty&&!state.showAdj)){
-          if(state.showAdj){ label=String(daysPrev-(startOff-1-idx)); adj=true; }
-        }
-      } else if(n<=days){
-        active=true; dayNum=n; label=String(n++);
-      } else {
-        if(!(state.hideEmpty&&!state.showAdj)){
-          if(state.showAdj){ label=String(trailing++); adj=true; }
-        }
+        if(!state.showAdj) continue;
+        label=String(daysPrev-(startOff-idx-1)); adj=true;
+      }else if(dayNum>days){
+        if(!state.showAdj) continue;
+        label=String(trailing++); adj=true;
+      }else{
+        label=String(n++); adj=false;
       }
-
-      if(!state.tableLines){
-        if(!state.hideEmpty || active || state.showAdj){
-          const rect=document.createElementNS(svgns,"rect");
-          rect.setAttribute("x",x); rect.setAttribute("y",y);
-          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
-          rect.setAttribute("rx",mm(state.cellRadius));
-          rect.setAttribute("fill",active?"#fff":"#f6f6f6");
-          rect.setAttribute("stroke",state.cellStrokePt>0?"#000":"none");
-          rect.setAttribute("stroke-width",ptToPx(state.cellStrokePt));
-          g.appendChild(rect);
-        }
-      }
+      if(state.hideEmpty && !label) continue;
 
       if(label){
         const dn=document.createElementNS(svgns,"text");
@@ -175,10 +171,10 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         dn.setAttribute("fill",adj?`rgba(0,0,0,${Math.min(0.9,Math.max(0.1,state.adjAlpha/100))})`:"#000");
         const dx=mm(state.dayOffX), dy=mm(state.dayOffY);
         let ax,ay,anch=state.dayAnchor;
-        if(anch==="top-right"){ax=x+cellW+dx;ay=y+dy;dn.setAttribute("text-anchor","end");dn.setAttribute("dominant-baseline","hanging")}
-        else if(anch==="top-left"){ax=x+dx;ay=y+dy;dn.setAttribute("text-anchor","start");dn.setAttribute("dominant-baseline","hanging")}
-        else if(anch==="center"){ax=x+cellW/2+dx;ay=y+cellH/2+dy;dn.setAttribute("text-anchor","middle");dn.setAttribute("dominant-baseline","middle")}
-        else {ax=x+cellW+dx;ay=y+cellH+dy;dn.setAttribute("text-anchor","end");dn.setAttribute("dominant-baseline","ideographic")}
+        if(anch==="top-right"){ax=x+cellW+dx;ay=cellY+dy;dn.setAttribute("text-anchor","end");dn.setAttribute("dominant-baseline","hanging")}
+        else if(anch==="top-left"){ax=x+dx;ay=cellY+dy;dn.setAttribute("text-anchor","start");dn.setAttribute("dominant-baseline","hanging")}
+        else if(anch==="center"){ax=x+cellW/2+dx;ay=cellY+cellH/2+dy;dn.setAttribute("text-anchor","middle");dn.setAttribute("dominant-baseline","middle")}
+        else {ax=x+cellW+dx;ay=cellY+cellH+dy;dn.setAttribute("text-anchor","end");dn.setAttribute("dominant-baseline","ideographic")}
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
@@ -188,7 +184,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
 
         if (names.length) {
           const hx = x + mm(state.holidayOffX);
-          const hy = y + cellH + mm(state.holidayOffY);
+          const hy = cellY + cellH + mm(state.holidayOffY);
 
           if (window.__HOL_DBG) {
             const dot = document.createElementNS(svgns, "circle");
