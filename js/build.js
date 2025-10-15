@@ -156,7 +156,6 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
-      // Holidays overlay (front, overflow allowed)
       if(state.holidayEnabled && active){
         const names = holidayNamesFor(y, mIdx, dayNum);
         if(names.length){

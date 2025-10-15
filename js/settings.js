@@ -6,8 +6,8 @@ let onChangeCb=null;
 
 export function initSettings({onChange}){
   onChangeCb = onChange;
-  const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; }
-  const yr=$("year"); if(yr){ yr.value=state.year; }
+  const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; ms.addEventListener("change", updateHolidayStatusInfo); }
+  const yr=$("year"); if(yr){ yr.value=state.year; yr.addEventListener("input", updateHolidayStatusInfo); }
 
   bindSel("lang","lang"); bindChk("fullNames","fullNames");
   bindSel("firstDay","firstDay",true);
@@ -24,8 +24,8 @@ export function initSettings({onChange}){
   bindChk("showGuides","showGuides");
 
   bindNum("year","year"); bindSel("month","month",true);
-  $("prevM")?.addEventListener("click",()=>{ state.month=(state.month+11)%12; $("month").value=state.month; onChangeCb(); });
-  $("nextM")?.addEventListener("click",()=>{ state.month=(state.month+1)%12; $("month").value=state.month; onChangeCb(); });
+  $("prevM")?.addEventListener("click",()=>{ state.month=(state.month+11)%12; $("month").value=state.month; onChangeCb(); updateHolidayStatusInfo(); });
+  $("nextM")?.addEventListener("click",()=>{ state.month=(state.month+1)%12; $("month").value=state.month; onChangeCb(); updateHolidayStatusInfo(); });
 
   setupFontPicker("hdrFontSel","hdrFontCustomRow","hdrFontCustom","hdrFont");
   bindNum("hdrSize","hdrSizePt"); bindSel("hdrAlign","hdrAlign"); bindNum("hdrGap","hdrGap");
@@ -50,30 +50,43 @@ export function initSettings({onChange}){
 
   // Holidays UI
   bindChk("holidayEnabled","holidayEnabled");
+  $("holidayEnabled").addEventListener("change", updateHolidayStatusInfo);
   bindTxt("holidayRegion","holidayRegion");
+  $("holidayRegion").addEventListener("input", updateHolidayStatusInfo);
   setupFontPicker("holFontSel","holFontCustomRow","holFontCustom","holidayFont");
   bindNum("holSizePt","holidaySizePt");
   $("holColor")?.addEventListener("input",()=>{ state.holidayColor = $("holColor").value; onChangeCb(); });
   bindNum("holOffX","holidayOffX");
   bindNum("holOffY","holidayOffY");
 
+  // Load from local file -> populate textarea + apply
   $("holidayFile")?.addEventListener("change",(e)=>{
     const f=e.target.files?.[0]; if(!f) return;
     const reader=new FileReader();
-    reader.onload=()=>{ tryApplyHolidayJSON(String(reader.result)); };
+    reader.onload=()=>{
+      const text = String(reader.result||"");
+      const ta=$("holidayText"); if(ta) ta.value = text;
+      tryApplyHolidayJSON(text, {source:"file"});
+    };
     reader.readAsText(f);
   });
+
+  // Apply from textarea
   $("applyHolidayJSON")?.addEventListener("click",()=>{
-    tryApplyHolidayJSON($("holidayText")?.value||"");
+    tryApplyHolidayJSON($("holidayText")?.value||"", {source:"textarea"});
   });
+
+  // Try fetch default holidays.json at root
   $("loadDefaultHolidayJSON")?.addEventListener("click", async ()=>{
     try{
+      setStatus("Loading holidays.json …");
       const res = await fetch("holidays.json", {cache:"no-store"});
       if(!res.ok) throw new Error("HTTP "+res.status);
       const data = await res.json();
-      setHolidayObject(normalizeHolidayObject(data));
+      if($("holidayText")) $("holidayText").value = JSON.stringify(data, null, 2);
+      setHolidayObject(normalizeHolidayObject(data), {autoEnable:true, source:"fetch"});
     }catch(err){
-      alert("Couldn't load holidays.json: "+err.message);
+      setStatus("Couldn't load holidays.json: "+err.message, false);
     }
   });
 
@@ -87,6 +100,9 @@ export function initSettings({onChange}){
 
   // Generate preview + ZIP
   $("generate")?.addEventListener("click",()=>openPreviewAndZip());
+
+  // Initial status
+  updateHolidayStatusInfo();
 }
 
 /* ===== SNAP open/close (align to button's top-left) ===== */
@@ -95,7 +111,7 @@ export function openSheetSnap(){
   const br=btn.getBoundingClientRect();
   btn.style.display='none';
   card.style.left = br.left + "px";
-  card.style.top  = br.top + "px";
+  card.style.top  = br.top  + "px";
   sheet.dataset.open="true";
   sheet.removeAttribute("inert");
   setTimeout(()=>{ $("closeSheet")?.focus({preventScroll:true}); }, 0);
@@ -256,13 +272,20 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   if(sel.value!=="__custom__") row.classList.add("hidden");
 }
 
-/* Holidays JSON handling */
-function tryApplyHolidayJSON(text){
+/* ===== Holidays JSON handling + feedback ===== */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function setStatus(msg, ok=true){
+  const el=$("holidayStatus");
+  if(!el) return;
+  el.textContent = msg;
+  el.style.color = ok ? "#9ad07a" : "#ff6b6b";
+}
+function tryApplyHolidayJSON(text, {source}={}){
   try{
     const data = JSON.parse(text);
-    setHolidayObject(normalizeHolidayObject(data));
+    setHolidayObject(normalizeHolidayObject(data), {autoEnable:true, source});
   }catch(e){
-    alert("Invalid JSON: "+e.message);
+    setStatus("Invalid JSON: "+e.message, false);
   }
 }
 function normalizeHolidayObject(data){
@@ -282,13 +305,54 @@ function normalizeHolidayObject(data){
     if(/^\d{4}-\d{2}-\d{2}$/.test(firstKey)){
       return { "__ALL__": data };
     }
-    return data;
+    return data; // assume map of regions
   }
   return {};
 }
-function setHolidayObject(obj){
+function setHolidayObject(obj, {autoEnable=false, source}={}){
   state.holidays = obj || {};
+  const regions = Object.keys(state.holidays).filter(k=>k!=="__ALL__");
+  if(regions.length===1){
+    state.holidayRegion = regions[0];
+    const regionInput = $("holidayRegion"); if(regionInput) regionInput.value = state.holidayRegion;
+  }
+  if(autoEnable){
+    state.holidayEnabled = true;
+    const chk = $("holidayEnabled"); if(chk) chk.checked = true;
+  }
+  const ta = $("holidayText");
+  if(ta && source){ try{ ta.value = JSON.stringify(denormalizeForTextarea(state.holidays), null, 2); }catch{} }
+
   onChangeCb();
+  updateHolidayStatusInfo();
+}
+function denormalizeForTextarea(obj){ return obj; }
+function countRegionTotal(obj, region){
+  const r = (obj||{})[region] || {};
+  return Object.keys(r).length;
+}
+function countRegionMonth(obj, region, year, month){
+  const r = (obj||{})[region] || {};
+  const prefix = `${year}-${pad2(month+1)}-`;
+  let n=0;
+  for(const k of Object.keys(r)){ if(k.startsWith(prefix)) n++; }
+  const all = (obj||{}).__ALL__ || {};
+  for(const k of Object.keys(all)){ if(k.startsWith(prefix)) n++; }
+  return n;
+}
+function updateHolidayStatusInfo(){
+  const reg = (state.holidayRegion||"").toUpperCase();
+  const enabled = state.holidayEnabled;
+  const total = countRegionTotal(state.holidays, reg);
+  const monthCount = countRegionMonth(state.holidays, reg, state.year, state.month);
+  if(!Object.keys(state.holidays||{}).length){
+    setStatus("No holidays loaded.");
+    return;
+  }
+  let msg = `Loaded ${total} dates for ${reg || "—"}`;
+  msg += `  •  ${monthCount} in ${state.year}-${pad2(state.month+1)}`;
+  if(!enabled) msg += "  (toggle ‘Show holidays’ to display)";
+  setStatus(msg, true);
 }
 
 /* ===== Preview + ZIP ===== */

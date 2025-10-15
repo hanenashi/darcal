@@ -9,7 +9,6 @@ export function initWorkspace(){
   previewHost=$("preview"); hud=$("hud");
   stage=document.createElement("div"); stage.id="stage"; previewHost.appendChild(stage);
   wirePanZoom();
-  // no outside-click-to-close; settings stays open until you click its title or ✕
   window.addEventListener("resize", ()=>{ if(!state.view.userMoved) centerView(); drawRulers(); });
 }
 
