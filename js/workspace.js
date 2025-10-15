@@ -30,6 +30,7 @@ export function render() {
     const ov = document.createElementNS(svgns, "g");
     ov.setAttribute("transform", `translate(${mm(state.calX)}, ${mm(state.calY)})`);
 
+    // Transparent hit-rect for moving the whole block
     const hit = document.createElementNS(svgns, "rect");
     hit.setAttribute("x", -mm(4));
     hit.setAttribute("y", -mm(4));
@@ -40,16 +41,9 @@ export function render() {
     hit.dataset.role = "move";
     ov.appendChild(hit);
 
-    const guide = document.createElementNS(svgns, "rect");
-    guide.setAttribute("x", 0);
-    guide.setAttribute("y", 0);
-    guide.setAttribute("width", mm(state.calW));
-    guide.setAttribute("height", mm(state.calH));
-    guide.setAttribute("class", "guide");
-    guide.dataset.role = "move";
-    guide.style.cursor = "move";
-    ov.appendChild(guide);
+    // NO cyan guide rectangle anymore
 
+    // Handles + fat hit areas
     const size = mm(4.5);
     const pos = [
       ["nw", 0, 0], ["n", mm(state.calW) / 2, 0], ["ne", mm(state.calW), 0],
@@ -123,6 +117,7 @@ export function zoomAtPoint(factor, cx, cy) {
   drawRulers();
 }
 
+// Tell Settings to mirror inputs without triggering re-render
 function dispatchSync(keys) {
   try {
     window.dispatchEvent(new CustomEvent("darcal:state-sync", { detail: keys }));
@@ -131,6 +126,7 @@ function dispatchSync(keys) {
 
 /* -------------------- Pan/Zoom (mouse + touch) -------------------- */
 function wirePanZoom() {
+  // Mouse / pen via pointer events
   let isPanning = false, panStart = null;
 
   previewHost.addEventListener("wheel", (e) => {
@@ -162,7 +158,7 @@ function wirePanZoom() {
   previewHost.addEventListener("pointerup", endPan, { passive: true });
   previewHost.addEventListener("pointercancel", endPan, { passive: true });
 
-  // Touch
+  // Touch: explicit handlers so 2-finger pinch works alongside 1-finger pan
   const touches = new Map();
   const tp = (t) => ({ x: t.clientX, y: t.clientY });
 
@@ -177,15 +173,19 @@ function wirePanZoom() {
     if (e.touches.length === 2) {
       e.preventDefault();
       state.view.userMoved = true;
+
       const [a, b] = [e.touches[0], e.touches[1]];
       const pa = touches.get(a.identifier) || tp(a);
       const pb = touches.get(b.identifier) || tp(b);
       const prevDist = Math.hypot(pa.x - pb.x, pa.y - pb.y) || 1;
-      const newDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+      const newDist  = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+
       const rect = previewHost.getBoundingClientRect();
       const midX = ((a.clientX + b.clientX) / 2) - rect.left;
       const midY = ((a.clientY + b.clientY) / 2) - rect.top;
+
       zoomAtPoint(newDist / prevDist, midX, midY);
+
       touches.set(a.identifier, tp(a));
       touches.set(b.identifier, tp(b));
       return;
@@ -213,7 +213,7 @@ function wirePanZoom() {
   }, { passive: true });
 }
 
-/* -------------------- Drag / Resize yellow frame -------------------- */
+/* -------------------- Drag / Resize hot-corner frame -------------------- */
 function wireDrag(svg, ov) {
   let active = null;
 
@@ -261,12 +261,12 @@ function wireDrag(svg, ov) {
     state.calW = Math.round(w * 10) / 10;
     state.calH = Math.round(h * 10) / 10;
 
+    // Move the overlay group to the new position
     ov.setAttribute("transform", `translate(${mm(state.calX)}, ${mm(state.calY)})`);
-    const grect = ov.querySelector('rect.guide');
-    grect.setAttribute("width", mm(state.calW));
-    grect.setAttribute("height", mm(state.calH));
 
+    // Keep handles + fat zones aligned
     updateHandlePositions(ov);
+
     updateHudText();
     positionHud(e);
     dispatchSync(["calX", "calY", "calW", "calH"]);
@@ -313,7 +313,15 @@ function updateHandlePositions(ov){
     const {hx, hy} = xyFor(fat.dataset.role||"");
     fat.setAttribute("x", hx - pad);
     fat.setAttribute("y", hy - pad);
+    // Resize the move hit-rect to follow new size, too (has role="move"? no—it's the transparent big one above)
   });
+
+  // Also update the move hit-rect size so grab area tracks W/H changes
+  const hit = ov.querySelector('rect[data-role="move"]');
+  if (hit) {
+    hit.setAttribute("width",  mm(state.calW) + mm(8));
+    hit.setAttribute("height", mm(state.calH) + mm(8));
+  }
 }
 
 /* -------------------- HUD helpers -------------------- */
