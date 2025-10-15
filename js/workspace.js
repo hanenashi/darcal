@@ -72,6 +72,7 @@ export function render() {
         "w": "ew-resize", "e": "ew-resize"
       })[name];
       ov.appendChild(h);
+
       const fat = document.createElementNS(svgns, "rect");
       const pad = mm(6);
       fat.setAttribute("x", x - pad);
@@ -122,11 +123,11 @@ export function zoomAtPoint(factor, cx, cy) {
   drawRulers();
 }
 
-// --- live sync event to Settings ---
+// Notify Settings to mirror inputs without triggering a re-render
 function dispatchSync(keys) {
   try {
     window.dispatchEvent(new CustomEvent("darcal:state-sync", { detail: keys }));
-  } catch { }
+  } catch {}
 }
 
 /* -------------------- Pan/Zoom (mouse + touch) -------------------- */
@@ -165,53 +166,46 @@ function wirePanZoom() {
 
   // Touch: explicit handlers so 2-finger pinch works alongside 1-finger pan
   const touches = new Map();
-
-  const touchPoint = (t) => ({ x: t.clientX, y: t.clientY });
+  const tp = (t) => ({ x: t.clientX, y: t.clientY });
 
   previewHost.addEventListener("touchstart", (e) => {
     if (blockManipulating) return;
-    for (const t of e.changedTouches) {
-      touches.set(t.identifier, touchPoint(t));
-    }
+    for (const t of e.changedTouches) touches.set(t.identifier, tp(t));
   }, { passive: true });
 
   previewHost.addEventListener("touchmove", (e) => {
     if (blockManipulating) return;
 
-    const tlist = e.touches;
-    if (tlist.length === 2) {
-      // Pinch-zoom
-      e.preventDefault(); // need this to stop page scrolling
+    if (e.touches.length === 2) {
+      e.preventDefault();
       state.view.userMoved = true;
 
-      const [a, b] = [tlist[0], tlist[1]];
-      const pa = touches.get(a.identifier) || touchPoint(a);
-      const pb = touches.get(b.identifier) || touchPoint(b);
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const pa = touches.get(a.identifier) || tp(a);
+      const pb = touches.get(b.identifier) || tp(b);
       const prevDist = Math.hypot(pa.x - pb.x, pa.y - pb.y) || 1;
-      const newDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+      const newDist  = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
 
-      // Midpoint relative to previewHost
       const rect = previewHost.getBoundingClientRect();
       const midX = ((a.clientX + b.clientX) / 2) - rect.left;
       const midY = ((a.clientY + b.clientY) / 2) - rect.top;
 
       zoomAtPoint(newDist / prevDist, midX, midY);
 
-      touches.set(a.identifier, touchPoint(a));
-      touches.set(b.identifier, touchPoint(b));
+      touches.set(a.identifier, tp(a));
+      touches.set(b.identifier, tp(b));
       return;
     }
 
-    if (tlist.length === 1) {
-      // One-finger pan
-      const t = tlist[0];
-      const prev = touches.get(t.identifier) || touchPoint(t);
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const prev = touches.get(t.identifier) || tp(t);
       const dx = t.clientX - prev.x;
       const dy = t.clientY - prev.y;
       state.view.tx += dx;
       state.view.ty += dy;
       state.view.userMoved = true;
-      touches.set(t.identifier, touchPoint(t));
+      touches.set(t.identifier, tp(t));
       applyView(); drawRulers();
     }
   }, { passive: false });
@@ -246,6 +240,7 @@ function wireDrag(svg, ov) {
     const dxmm = (e.clientX - active.mx) / PX_PER_MM, dymm = (e.clientY - active.my) / PX_PER_MM;
     let { x, y, w, h } = active.start;
     const minW = 10, minH = 10;
+
     if (active.role === "move") { x += dxmm; y += dymm; }
     else if (active.role === "e") w = Math.max(minW, w + dxmm);
     else if (active.role === "w") { x += dxmm; w = Math.max(minW, w - dxmm); }
@@ -255,8 +250,10 @@ function wireDrag(svg, ov) {
     else if (active.role === "ne") { w = Math.max(minW, w + dxmm); y += dymm; h = Math.max(minH, h - dymm); }
     else if (active.role === "sw") { x += dxmm; w = Math.max(minW, w - dxmm); h = Math.max(minH, h + dymm); }
     else if (active.role === "nw") { x += dxmm; y += dymm; w = Math.max(minW, w - dxmm); h = Math.max(minH, h - dymm); }
+
     x = Math.max(0, Math.min(x, state.pageW - w));
     y = Math.max(0, Math.min(y, state.pageH - h));
+
     state.calX = Math.round(x * 10) / 10;
     state.calY = Math.round(y * 10) / 10;
     state.calW = Math.round(w * 10) / 10;
@@ -266,6 +263,8 @@ function wireDrag(svg, ov) {
     const grect = ov.querySelector('rect.guide');
     grect.setAttribute("width", mm(state.calW));
     grect.setAttribute("height", mm(state.calH));
+
+    updateHandlePositions(ov);  // keep handles + fat zones aligned
 
     updateHudText();
     positionHud(e);
@@ -283,6 +282,37 @@ function wireDrag(svg, ov) {
   svg.addEventListener("pointermove", onMove, { passive: false });
   svg.addEventListener("pointerup", end, { passive: true });
   svg.addEventListener("pointercancel", end, { passive: true });
+}
+
+/* -------------------- Handle layout helper -------------------- */
+function updateHandlePositions(ov){
+  const wpx = mm(state.calW);
+  const hpx = mm(state.calH);
+  const size = mm(4.5);
+  const pad  = mm(6);
+
+  const xyFor = (role) => {
+    let hx = 0, hy = 0;
+    if (role.includes("e")) hx = wpx;
+    if (role.includes("w")) hx = 0;
+    if (role === "n" || role === "s") hx = wpx/2;
+    if (role.includes("s")) hy = hpx;
+    if (role.includes("n")) hy = 0;
+    if (role === "w" || role === "e") hy = hpx/2;
+    return {hx, hy};
+  };
+
+  ov.querySelectorAll('.handle').forEach(hh=>{
+    const {hx, hy} = xyFor(hh.dataset.role||"");
+    hh.setAttribute("x", hx - size/2);
+    hh.setAttribute("y", hy - size/2);
+  });
+
+  ov.querySelectorAll('[data-role]:not(.handle)').forEach(fat=>{
+    const {hx, hy} = xyFor(fat.dataset.role||"");
+    fat.setAttribute("x", hx - pad);
+    fat.setAttribute("y", hy - pad);
+  });
 }
 
 /* -------------------- HUD helpers -------------------- */
