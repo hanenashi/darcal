@@ -160,7 +160,7 @@ function wirePanZoom(){
       const midY=((a.clientY+b.clientY)/2) - rect.top;
       zoomAtPoint(newDist/prevDist, midX, midY);
       touches.set(a.identifier,{x:a.clientX,y:a.clientY});
-      touches.set(b.identifier},{x:b.clientX,y:b.clientY});
+      touches.set(b.identifier, { x: b.clientX, y: b.clientY });
       state.view.userMoved=true;
     }
   }, {passive:false});
