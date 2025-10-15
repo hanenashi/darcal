@@ -123,7 +123,6 @@ export function zoomAtPoint(factor, cx, cy) {
   drawRulers();
 }
 
-// Notify Settings to mirror inputs without triggering a re-render
 function dispatchSync(keys) {
   try {
     window.dispatchEvent(new CustomEvent("darcal:state-sync", { detail: keys }));
@@ -132,7 +131,6 @@ function dispatchSync(keys) {
 
 /* -------------------- Pan/Zoom (mouse + touch) -------------------- */
 function wirePanZoom() {
-  // Mouse / pen via pointer events
   let isPanning = false, panStart = null;
 
   previewHost.addEventListener("wheel", (e) => {
@@ -164,7 +162,7 @@ function wirePanZoom() {
   previewHost.addEventListener("pointerup", endPan, { passive: true });
   previewHost.addEventListener("pointercancel", endPan, { passive: true });
 
-  // Touch: explicit handlers so 2-finger pinch works alongside 1-finger pan
+  // Touch
   const touches = new Map();
   const tp = (t) => ({ x: t.clientX, y: t.clientY });
 
@@ -179,19 +177,15 @@ function wirePanZoom() {
     if (e.touches.length === 2) {
       e.preventDefault();
       state.view.userMoved = true;
-
       const [a, b] = [e.touches[0], e.touches[1]];
       const pa = touches.get(a.identifier) || tp(a);
       const pb = touches.get(b.identifier) || tp(b);
       const prevDist = Math.hypot(pa.x - pb.x, pa.y - pb.y) || 1;
-      const newDist  = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
-
+      const newDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
       const rect = previewHost.getBoundingClientRect();
       const midX = ((a.clientX + b.clientX) / 2) - rect.left;
       const midY = ((a.clientY + b.clientY) / 2) - rect.top;
-
       zoomAtPoint(newDist / prevDist, midX, midY);
-
       touches.set(a.identifier, tp(a));
       touches.set(b.identifier, tp(b));
       return;
@@ -229,7 +223,13 @@ function wireDrag(svg, ov) {
     e.preventDefault();
     blockManipulating = true;
     if (e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
-    active = { role, mx: e.clientX, my: e.clientY, start: { x: state.calX, y: state.calY, w: state.calW, h: state.calH } };
+    active = {
+      role,
+      mx: e.clientX,
+      my: e.clientY,
+      sc: state.view.scale || 1, // store scale at start
+      start: { x: state.calX, y: state.calY, w: state.calW, h: state.calH }
+    };
     hud.style.display = "block";
     updateHudText();
     positionHud(e);
@@ -237,7 +237,9 @@ function wireDrag(svg, ov) {
 
   const onMove = e => {
     if (!active) return;
-    const dxmm = (e.clientX - active.mx) / PX_PER_MM, dymm = (e.clientY - active.my) / PX_PER_MM;
+    const sc = active.sc || 1;
+    const dxmm = (e.clientX - active.mx) / (PX_PER_MM * sc);
+    const dymm = (e.clientY - active.my) / (PX_PER_MM * sc);
     let { x, y, w, h } = active.start;
     const minW = 10, minH = 10;
 
@@ -264,8 +266,7 @@ function wireDrag(svg, ov) {
     grect.setAttribute("width", mm(state.calW));
     grect.setAttribute("height", mm(state.calH));
 
-    updateHandlePositions(ov);  // keep handles + fat zones aligned
-
+    updateHandlePositions(ov);
     updateHudText();
     positionHud(e);
     dispatchSync(["calX", "calY", "calW", "calH"]);
