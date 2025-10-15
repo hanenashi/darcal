@@ -41,8 +41,11 @@ svg [data-role]{ touch-action:none }
   pointer-events:auto;
 }
 
-.sheet-header{ display:flex;justify-content:space-between;align-items:center;
-  padding:8px 10px; border-bottom:1px solid var(--line); user-select:none;}
+.sheet-header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 10px; border-bottom:1px solid var(--line); user-select:none;
+  touch-action:none; /* important for touch-drag stability */
+}
 .sheet-header h1{font-size:15px;margin:0; cursor:pointer;}
 .sheet-actions{display:flex; gap:6px; align-items:center}
 .chk-inline{ display:inline-flex; gap:6px; align-items:center; font-size:12px; color:var(--muted); }
@@ -53,10 +56,11 @@ h2{ font-size:12px; color:var(--muted); margin:10px 0 6px; text-transform:upperc
 .row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
 label{min-width:96px;color:var(--muted);font-size:11px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-input[type="number"],input[type="text"],select{
+input[type="number"],input[type="text"],select,textarea{
   background:#161a20;color:var(--fg);border:1px solid #2a2f39;border-radius:.45rem;
   padding:.24rem .38rem; min-width:0; font-size:13px; height:30px;
 }
+textarea{height:auto; font:13px/1.3 system-ui; }
 input[type="number"]{ width:92px }
 input[type="text"]{ width:100% }
 select{appearance:auto; max-width:220px}

@@ -199,6 +199,60 @@
             </div>
           </section>
 
+          <section>
+            <h2>Holidays</h2>
+            <div class="grid2">
+              <div class="row">
+                <label>Show holidays</label>
+                <input id="holidayEnabled" type="checkbox">
+              </div>
+              <div class="row">
+                <label>Region code</label>
+                <input id="holidayRegion" type="text" value="JP" placeholder="e.g. JP, US, CZ" style="width:90px">
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div class="row">
+                <label>Font</label>
+                <select id="holFontSel">
+                  <option value="Inter, Arial">Inter</option>
+                  <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
+                  <option value="Arial, Helvetica, sans-serif">Arial</option>
+                  <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+                  <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+              </div>
+              <div class="row"><label>Size (pt)</label><input id="holSizePt" type="number" value="7" step=".5"></div>
+            </div>
+            <div class="row hidden" id="holFontCustomRow"><label>Custom font CSS</label><input id="holFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
+
+            <div class="grid2">
+              <div class="row"><label>Color</label><input id="holColor" type="color" value="#c82020" style="width:90px;height:30px;padding:0;border:none"></div>
+              <div class="row"><label>Offset X (mm)</label><input id="holOffX" type="number" value="1.5" step=".2"></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Offset Y (mm)</label><input id="holOffY" type="number" value="-1.5" step=".2"></div>
+              <div class="row"></div>
+            </div>
+
+            <div class="row">
+              <label>Load JSON</label>
+              <input id="holidayFile" type="file" accept=".json">
+            </div>
+            <div class="row" style="align-items:flex-start">
+              <label>Edit JSON</label>
+              <textarea id="holidayText" rows="6" style="flex:1;min-width:220px;background:#161a20;color:#eee;border:1px solid #2a2f39;border-radius:.45rem;padding:.4rem" placeholder='{
+  "JP": { "2025-01-01": ["元日"], "2025-02-11": ["建国記念の日"] }
+}'></textarea>
+            </div>
+            <div class="btns">
+              <button id="applyHolidayJSON">Apply JSON</button>
+              <button id="loadDefaultHolidayJSON">Try fetch: holidays.json</button>
+            </div>
+          </section>
+
           <div class="btns">
             <button id="generate">Generate All (preview & ZIP)</button>
           </div>

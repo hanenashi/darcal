@@ -4,26 +4,12 @@ import { drawRulers } from './rulers.js';
 
 let previewHost, stage, hud;
 let blockManipulating=false;
-export function setBlockManipulating(v){ blockManipulating=v; }
 
 export function initWorkspace(){
   previewHost=$("preview"); hud=$("hud");
   stage=document.createElement("div"); stage.id="stage"; previewHost.appendChild(stage);
-
   wirePanZoom();
-
-  // close only on *click* outside (not during drag/zoom)
-  document.addEventListener("click",(e)=>{
-    const win=document.querySelector(".sheet-card");
-    const sheet=$("sheet");
-    const btn=$("settingsBtn");
-    if(sheet.dataset.open==="true"){
-      const path=e.composedPath();
-      const inside = path.includes(win) || path.includes(btn);
-      if(!inside){ sheet.dataset.open="false"; sheet.setAttribute("inert",""); btn.style.display='block'; btn.focus(); }
-    }
-  });
-
+  // no outside-click-to-close; settings stays open until you click its title or ✕
   window.addEventListener("resize", ()=>{ if(!state.view.userMoved) centerView(); drawRulers(); });
 }
 
@@ -61,8 +47,6 @@ export function render(){
       h.setAttribute("class","handle"); h.dataset.role=name;
       h.style.cursor=({"nw":"nwse-resize","se":"nwse-resize","ne":"nesw-resize","sw":"nesw-resize","n":"ns-resize","s":"ns-resize","w":"ew-resize","e":"ew-resize"})[name];
       ov.appendChild(h);
-
-      // fat touch targets
       const fat=document.createElementNS(svgns,"rect");
       const pad=mm(6);
       fat.setAttribute("x",x-pad); fat.setAttribute("y",y-pad);
@@ -136,7 +120,7 @@ function wirePanZoom(){
   previewHost.addEventListener("pointerup", endPan, {passive:true});
   previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
-  // touch: 1-finger pan, 2-finger pinch zoom
+  // touch pan & pinch — guarded by blockManipulating
   let touches=new Map();
   previewHost.addEventListener("touchmove",(e)=>{
     if(blockManipulating) return;
@@ -159,8 +143,8 @@ function wirePanZoom(){
       const midX=((a.clientX+b.clientX)/2) - rect.left;
       const midY=((a.clientY+b.clientY)/2) - rect.top;
       zoomAtPoint(newDist/prevDist, midX, midY);
-      touches.set(a.identifier,{x:a.clientX,y:a.clientY});
-      touches.set(b.identifier, { x: b.clientX, y: b.clientY });
+      touches.set(a.identifier, {x:a.clientX,y:a.clientY});
+      touches.set(b.identifier, {x:b.clientX,y:b.clientY});
       state.view.userMoved=true;
     }
   }, {passive:false});
@@ -172,6 +156,7 @@ function wireDrag(svg,ov){
   const onDown=e=>{
     const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
     e.preventDefault();
+    blockManipulating = true; // prevent canvas pan during move/resize
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
     hud.style.display="block";
@@ -208,7 +193,7 @@ function wireDrag(svg,ov){
     hud.style.left=(e.clientX - vb.left + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + 12)+"px";
   };
-  const end=()=>{active=null; hud.style.display="none"; render();};
+  const end=()=>{active=null; hud.style.display="none"; blockManipulating=false; render();};
   ov.addEventListener("pointerdown",onDown, {passive:false});
   svg.addEventListener("pointermove",onMove, {passive:false});
   svg.addEventListener("pointerup",end, {passive:true});

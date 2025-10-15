@@ -1,4 +1,4 @@
-import { state, $, clamp, PX_PER_MM } from './js/state.js';
+import { state } from './js/state.js';
 import { render, applyView, centerView, zoomAtPoint, initWorkspace } from './js/workspace.js';
 import { initSettings, openSheetSnap, closeSheetSnap } from './js/settings.js';
 import { drawRulers, initRulers } from './js/rulers.js';
@@ -41,11 +41,12 @@ function setupHotkeys(){
 function init(){
   initWorkspace();
   initRulers();
-  initSettings({ onChange: ()=>{ render(); drawRulers(); }, onOpen:openSheetSnap, onClose:closeSheetSnap });
+  initSettings({ onChange: ()=>{ render(); drawRulers(); } });
   render();
   centerView();
   drawRulers();
   setupHotkeys();
 }
 if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded', init);
+
 import './export-bridge.js';

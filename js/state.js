@@ -32,5 +32,15 @@ export const state={
   dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
   wdFont:"Inter, Arial", wdSizePt:8, wdOffX:0, wdOffY:-2,
   view:{scale:1, tx:12, ty:12, min:0.3, max:4, userMoved:false},
-  rulersOn:false
+  rulersOn:false,
+
+  // Holidays
+  holidayEnabled:false,
+  holidayRegion:"JP",
+  holidayFont:"Inter, Arial",
+  holidaySizePt:7,
+  holidayColor:"#c82020",
+  holidayOffX:1.5,
+  holidayOffY:-1.5,
+  holidays:{} // { "JP": { "YYYY-MM-DD": ["Name"] }, "US": {...}, "CZ": {...}, "__ALL__": {...} }
 };

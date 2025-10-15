@@ -4,7 +4,7 @@ import { drawRulers } from './rulers.js';
 
 let onChangeCb=null;
 
-export function initSettings({onChange, onOpen, onClose}){
+export function initSettings({onChange}){
   onChangeCb = onChange;
   const ms=$("month"); if(ms){ ms.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}</option>`).join(""); ms.value=state.month; }
   const yr=$("year"); if(yr){ yr.value=state.year; }
@@ -44,27 +44,55 @@ export function initSettings({onChange, onOpen, onClose}){
   setupFontPicker("wdFontSel","wdFontCustomRow","wdFontCustom","wdFont");
   bindNum("wdSizePt","wdSizePt"); bindNum("wdOffX","wdOffX"); bindNum("wdOffY","wdOffY");
 
+  // Rulers
   const chkRulers = $("chkRulers"); chkRulers.checked = state.rulersOn;
   chkRulers.addEventListener("change", ()=>{ state.rulersOn = chkRulers.checked; render(); drawRulers(); });
 
-  $("generate")?.addEventListener("click",()=>openPreviewAndZip());
+  // Holidays UI
+  bindChk("holidayEnabled","holidayEnabled");
+  bindTxt("holidayRegion","holidayRegion");
+  setupFontPicker("holFontSel","holFontCustomRow","holFontCustom","holidayFont");
+  bindNum("holSizePt","holidaySizePt");
+  $("holColor")?.addEventListener("input",()=>{ state.holidayColor = $("holColor").value; onChangeCb(); });
+  bindNum("holOffX","holidayOffX");
+  bindNum("holOffY","holidayOffY");
 
-  // Click-to-open only (no open on drag)
+  $("holidayFile")?.addEventListener("change",(e)=>{
+    const f=e.target.files?.[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=()=>{ tryApplyHolidayJSON(String(reader.result)); };
+    reader.readAsText(f);
+  });
+  $("applyHolidayJSON")?.addEventListener("click",()=>{
+    tryApplyHolidayJSON($("holidayText")?.value||"");
+  });
+  $("loadDefaultHolidayJSON")?.addEventListener("click", async ()=>{
+    try{
+      const res = await fetch("holidays.json", {cache:"no-store"});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const data = await res.json();
+      setHolidayObject(normalizeHolidayObject(data));
+    }catch(err){
+      alert("Couldn't load holidays.json: "+err.message);
+    }
+  });
+
+  // Sheet controls
   setupSettingsButtonDragToggle();
-
   setupWindowDrag();
   setupWindowResize();
-
-  $("closeSheet").addEventListener("click", ()=> closeSheetSnap());
+  $("closeSheet").addEventListener("click", closeSheetSnap);
   $("resetView").addEventListener("click", ()=>{ state.view.scale=1; state.view.userMoved=false; centerView(); drawRulers(); });
-  $("sheetTitle").addEventListener("click", ()=> closeSheetSnap());
+  $("sheetTitle").addEventListener("click", closeSheetSnap);
+
+  // Generate preview + ZIP
+  $("generate")?.addEventListener("click",()=>openPreviewAndZip());
 }
 
 /* ===== SNAP open/close (align to button's top-left) ===== */
 export function openSheetSnap(){
   const sheet=$("sheet"); const card=document.querySelector(".sheet-card"); const btn=$("settingsBtn");
   const br=btn.getBoundingClientRect();
-  // hide the button while open
   btn.style.display='none';
   card.style.left = br.left + "px";
   card.style.top  = br.top + "px";
@@ -74,15 +102,12 @@ export function openSheetSnap(){
 }
 export function closeSheetSnap(){
   const sheet=$("sheet"); const btn=$("settingsBtn"); const card=document.querySelector(".sheet-card");
-  // update button position to where the card is now
   const cr = card.getBoundingClientRect();
   const nl = Math.max(8, Math.min(cr.left, window.innerWidth - btn.offsetWidth - 8));
   const nt = Math.max(8, Math.min(cr.top,  window.innerHeight - btn.offsetHeight - 8));
   btn.style.left = nl + "px"; btn.style.top = nt + "px";
   btn.style.right="auto"; btn.style.bottom="auto";
   btn.style.display='block';
-
-  // focus back to button, then hide dialog
   btn.focus({preventScroll:true});
   sheet.dataset.open="false";
   sheet.setAttribute("inert","");
@@ -113,13 +138,12 @@ function setupWindowDrag(){
     win.style.left = nl + "px";
     win.style.top  = nt + "px";
   }, {passive:false});
-
-  const end=()=>{ if(!dragging) return; dragging=false; };
+  const end=()=>{ dragging=false; };
   window.addEventListener("pointerup", end, {passive:true});
   window.addEventListener("pointercancel", end, {passive:true});
 }
 
-/* ===== window resize (8 handles) ===== */
+/* ===== window resize ===== */
 function setupWindowResize(){
   const win = document.querySelector(".sheet-card"); if(!win) return;
   const handles = Array.from(win.querySelectorAll(".win-handle"));
@@ -189,15 +213,11 @@ function setupSettingsButtonDragToggle(){
     try{ localStorage.setItem("settings-btn-pos", JSON.stringify({l:r.left, t:r.top})); }catch{}
   }, {passive:true});
 
-  // Actual toggle only on click (and only if not dragged)
   btn.addEventListener("click",(e)=>{
     if(moved) { e.preventDefault(); e.stopPropagation(); moved=false; return; }
-    const isOpen = $("sheet").dataset.open==="true";
-    if (!isOpen){
-      openSheetSnap();
-    } else {
-      closeSheetSnap();
-    }
+    const sheet = $("sheet");
+    const isOpen = sheet.dataset.open==="true";
+    if (!isOpen){ openSheetSnap(); } else { closeSheetSnap(); }
   });
 }
 
@@ -234,6 +254,41 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   sel.addEventListener("change",apply);
   inp && inp.addEventListener("input",apply);
   if(sel.value!=="__custom__") row.classList.add("hidden");
+}
+
+/* Holidays JSON handling */
+function tryApplyHolidayJSON(text){
+  try{
+    const data = JSON.parse(text);
+    setHolidayObject(normalizeHolidayObject(data));
+  }catch(e){
+    alert("Invalid JSON: "+e.message);
+  }
+}
+function normalizeHolidayObject(data){
+  if(Array.isArray(data)){
+    const out={};
+    for(const it of data){
+      if(!it || !it.date || !it.name) continue;
+      const region=(it.region||"__ALL__").toUpperCase();
+      out[region] ||= {};
+      out[region][it.date] ||= [];
+      out[region][it.date].push(it.name);
+    }
+    return out;
+  }
+  if(typeof data==="object" && data){
+    const firstKey = Object.keys(data)[0] || "";
+    if(/^\d{4}-\d{2}-\d{2}$/.test(firstKey)){
+      return { "__ALL__": data };
+    }
+    return data;
+  }
+  return {};
+}
+function setHolidayObject(obj){
+  state.holidays = obj || {};
+  onChangeCb();
 }
 
 /* ===== Preview + ZIP ===== */

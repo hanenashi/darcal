@@ -1,5 +1,17 @@
 import { state, mm, ptToPx, monthsByLang, weekdaysByLang, daysInMonth, firstWeekday } from './state.js';
 
+function pad2(n){ return String(n).padStart(2,'0'); }
+function holidayNamesFor(y,m,d){
+  const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
+  const H = state.holidays || {};
+  const R = (state.holidayRegion||"").toUpperCase();
+  let out=[];
+  if (H[R] && H[R][key]) out = out.concat(H[R][key]);
+  if (H["__ALL__"] && H["__ALL__"][key]) out = out.concat(H["__ALL__"][key]);
+  if (Array.isArray(H[key])) out = out.concat(H[key]); // flat map support
+  return out;
+}
+
 export function weekdayRow(){
   const base=weekdaysByLang(state.lang,state.fullNames);
   if(state.firstDay===0) return base;
@@ -103,14 +115,14 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
       const idx=r*cols+c, x=c*(cellW+gutX), y=gridY0+r*(cellH+gutY);
-      let active=false,label="",adj=false;
+      let active=false,label="",adj=false, dayNum=null;
 
       if(idx<startOff){
         if(!(state.hideEmpty&&!state.showAdj)){
           if(state.showAdj){label=String(daysPrev-(startOff-1-idx)); adj=true;}
         }
       } else if(n<=days){
-        active=true; label=String(n++);
+        active=true; dayNum=n; label=String(n++);
       } else {
         if(!(state.hideEmpty&&!state.showAdj)){
           if(state.showAdj){label=String(trailing++); adj=true;}
@@ -143,10 +155,29 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
         else {ax=x+cellW+dx;ay=y+cellH+dy;dn.setAttribute("text-anchor","end");dn.setAttribute("dominant-baseline","ideographic")}
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
+
+      // Holidays overlay (front, overflow allowed)
+      if(state.holidayEnabled && active){
+        const names = holidayNamesFor(y, mIdx, dayNum);
+        if(names.length){
+          const hol=document.createElementNS(svgns,"text");
+          hol.setAttribute("font-family",state.holidayFont);
+          hol.setAttribute("font-size",ptToPx(state.holidaySizePt));
+          hol.setAttribute("fill",state.holidayColor||"#c82020");
+          hol.setAttribute("text-anchor","start");
+          hol.setAttribute("dominant-baseline","ideographic");
+          const hx = x + mm(state.holidayOffX);
+          const hy = y + cellH + mm(state.holidayOffY);
+          hol.setAttribute("x",hx);
+          hol.setAttribute("y",hy);
+          hol.textContent = names.join(" • ");
+          g.appendChild(hol);
+        }
+      }
     }
   }
 
-  // Guidelines front (magenta), tied to rulers toggle
+  // Guidelines (front) when rulers toggled
   if(state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");
@@ -170,5 +201,6 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     });
     svg.appendChild(gGuide);
   }
+
   return svg;
 }
