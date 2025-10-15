@@ -117,6 +117,19 @@ export function initSettings({onChange}){
   // Initial status
   rebuildHolidayFlat(); // make sure flat exists at load time
   updateHolidayStatusInfo();
+
+  // Mirror inputs when workspace drags/resizes (no events, no re-render)
+  window.addEventListener("darcal:state-sync", (ev)=>{
+    const keys = (ev && ev.detail) || [];
+    for(const k of keys){
+      const el = $(k);
+      if(!el) continue;
+      const v = (typeof state[k] === "number") ? (Math.round(state[k]*10)/10) : state[k];
+      if (el.type === "number" || el.type === "text") el.value = v;
+      else if (el.tagName === "SELECT") el.value = v;
+      else if (el.type === "checkbox") el.checked = !!v;
+    }
+  });
 }
 
 /* ===== SNAP open/close (snap to button TL) ===== */
