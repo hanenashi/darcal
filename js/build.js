@@ -1,11 +1,8 @@
-// build.js
-// Create a single month SVG from state. Supports holidays, table lines, guidelines.
-
 import { state, mm, ptToPx, monthsByLang, weekdaysByLang, daysInMonth, firstWeekday } from './state.js';
 
 function pad2(n){ return String(n).padStart(2,'0'); }
 
-// Prefer a pre-flattened holidays map (window.__HOL_FLAT). Fallback to state.holidays.
+// Prefer a pre-flattened map (date -> [names]) if available; otherwise combine on the fly.
 function holidayNamesFor(y, m, d){
   const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
   const flat = (window.__HOL_FLAT || null);
@@ -21,7 +18,7 @@ function holidayNamesFor(y, m, d){
   let out = [];
   for (const reg of regions) if (H[reg] && H[reg][key]) out = out.concat(H[reg][key]);
   if (H["__ALL__"] && H["__ALL__"][key]) out = out.concat(H["__ALL__"][key]);
-  if (Array.isArray(H[key])) out = out.concat(H[key]); // flat support
+  if (Array.isArray(H[key])) out = out.concat(H[key]); // flat map support
   return out;
 }
 
@@ -38,7 +35,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
   svg.setAttribute("width", state.pageW + "mm"); svg.setAttribute("height", state.pageH + "mm");
   svg.setAttribute("viewBox", `0 0 ${mm(state.pageW)} ${mm(state.pageH)}`);
 
-  // Page background
+  // Page
   const page = document.createElementNS(svgns, "rect");
   page.setAttribute("x", 0); page.setAttribute("y", 0);
   page.setAttribute("width", mm(state.pageW)); page.setAttribute("height", mm(state.pageH));
@@ -66,14 +63,13 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
   const hdrGapPx = mm(state.hdrGap);
   const gridY0 = ptToPx(state.hdrSizePt) + hdrGapPx;
 
-  // Grid metrics
   const cols = 7, rows = 6;
   const gutX = mm(state.gutX), gutY = mm(state.gutY);
   const gridW = mm(state.calW), gridH = mm(state.calH) - gridY0;
   const cellW = (gridW - gutX * (cols - 1)) / cols;
   const cellH = (gridH - gutY * (rows - 1)) / rows;
 
-  // Weekday labels
+  // Weekday names row
   const wdY = gridY0 + mm(state.wdOffY);
   weekdayRow().forEach((d,i)=>{
     const t = document.createElementNS(svgns, "text");
@@ -87,35 +83,38 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     t.textContent = d; g.appendChild(t);
   });
 
-  // Month layout
+  // Month math
   const startOff = firstWeekday(y, mIdx, state.firstDay);
   const days = daysInMonth(y, mIdx);
   const daysPrev = daysInMonth(y - (mIdx===0?1:0), (mIdx+11)%12);
   let n=1, trailing=1;
 
-  // Table lines
+  // Grid outlines (table lines mode)
   if (state.tableLines){
     const strokeW = ptToPx(state.tableStrokePt || state.cellStrokePt);
 
     if (state.hideEmpty && !state.showAdj){
-      // show outlines only for active cells
+      // draw only active day rectangles
       for(let r=0;r<rows;r++){
         for(let c=0;c<cols;c++){
           const idx=r*cols+c;
-          const active = (idx>=startOff) && (idx<startOff+days);
+          const inLead = idx<startOff;
+          const afterEnd = (idx>=startOff+days);
+          const active = !(inLead || afterEnd);
           if(!active) continue;
           const x=c*(cellW+gutX);
           const cellY=gridY0 + r*(cellH+gutY);
           const rect=document.createElementNS(svgns,"rect");
           rect.setAttribute("x",x); rect.setAttribute("y",cellY);
           rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
-          rect.setAttribute("fill","none"); rect.setAttribute("rx",0);
-          rect.setAttribute("stroke","#000"); rect.setAttribute("stroke-width",strokeW);
+          rect.setAttribute("fill","none");
+          rect.setAttribute("stroke","#000");
+          rect.setAttribute("stroke-width",strokeW);
           g.appendChild(rect);
         }
       }
     } else {
-      // full frame + inner grid lines
+      // full border + inner grid
       const border=document.createElementNS(svgns,"rect");
       border.setAttribute("x",0); border.setAttribute("y",gridY0);
       border.setAttribute("width",gridW); border.setAttribute("height",gridH);
@@ -157,7 +156,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         }
       }
 
-      // Non-table-lines cell boxes
+      // Cell rectangles (non-table-lines mode)
       if(!state.tableLines){
         if(!state.hideEmpty || active || state.showAdj){
           const rect=document.createElementNS(svgns,"rect");
@@ -186,7 +185,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
-      // Holidays overlay
+      // Holidays (front)
       if (state.holidayEnabled && active) {
         const names = holidayNamesFor(y, mIdx, dayNum);
         if (names.length) {
@@ -208,7 +207,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     }
   }
 
-  // Guidelines (front) when rulers enabled (visual aid only; not in export)
+  // Guidelines (front) tied to rulers toggle
   if (state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");

@@ -1,366 +1,200 @@
-// workspace.js
-// Pan/zoom workspace, drag/resize calendar block, month cycling, live HUD.
-// Emits "darcal:state-sync" with keys to update Settings inputs.
-
-import { state, $, mm, clamp } from './state.js';
+import { state, PX_PER_MM, mm, $, clamp } from './state.js';
 import { buildMonthSVG } from './build.js';
+import { drawRulers } from './rulers.js';
 
-// ---- DOM bootstrap ---------------------------------------------------------
-function ensureDom() {
-  let ws = $("workspace");
-  if (!ws) {
-    ws = document.createElement("div");
-    ws.id = "workspace";
-    ws.style.cssText = `
-      position:relative; inset:0; width:100%; height:100%;
-      background:#0d0f14; overflow:hidden; touch-action:none;`;
-    document.body.appendChild(ws);
-  }
-  let view = $("view");
-  if (!view) {
-    view = document.createElement("div");
-    view.id = "view";
-    view.style.cssText = `
-      position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform;`;
-    ws.appendChild(view);
-  }
-  let pageHost = $("pageHost");
-  if (!pageHost) {
-    pageHost = document.createElement("div");
-    pageHost.id = "pageHost";
-    pageHost.style.cssText = `position:relative; width:${mm(state.pageW)}px; height:${mm(state.pageH)}px;`;
-    view.appendChild(pageHost);
-  }
-  let overlay = $("overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "overlay";
-    overlay.style.cssText = `position:absolute; left:0; top:0; width:${mm(state.pageW)}px; height:${mm(state.pageH)}px; pointer-events:none;`;
-    view.appendChild(overlay);
-  }
-  let calFrame = $("calFrame");
-  if (!calFrame) {
-    calFrame = document.createElement("div");
-    calFrame.id = "calFrame";
-    calFrame.style.cssText = `
-      position:absolute; border:1px dashed #ffd54a; background:transparent;
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); pointer-events:auto; touch-action:none;`;
-    overlay.appendChild(calFrame);
-    addResizeHandles(calFrame);
-  }
-  let hud = $("dragHud");
-  if (!hud) {
-    hud = document.createElement("div");
-    hud.id = "dragHud";
-    hud.style.cssText = `
-      position:fixed; left:12px; top:12px; z-index:9999;
-      background:#ffeb3b; color:#111; font:12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      padding:6px 8px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.35);
-      display:none;`;
-    document.body.appendChild(hud);
-  }
-}
-function addResizeHandles(frame) {
-  const mk = (role, cursor, left, top) => {
-    const h = document.createElement("div");
-    h.className = "handle";
-    h.dataset.role = role;
-    h.style.cssText = `
-      position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; background:#ffd54a;
-      border:1px solid #775; border-radius:2px; box-shadow:0 1px 2px rgba(0,0,0,.25);
-      cursor:${cursor}; touch-action:none;`;
-    h.style.left = left;
-    h.style.top = top;
-    frame.appendChild(h);
-  };
-  mk("nw-resize", "nwse-resize", "0%", "0%");
-  mk("n-resize", "ns-resize", "50%", "0%");
-  mk("ne-resize", "nesw-resize", "100%", "0%");
-  mk("e-resize", "ew-resize", "100%", "50%");
-  mk("se-resize", "nwse-resize", "100%", "100%");
-  mk("s-resize", "ns-resize", "50%", "100%");
-  mk("sw-resize", "nesw-resize", "0%", "100%");
-  mk("w-resize", "ew-resize", "0%", "50%");
-}
+let previewHost, stage, hud;
+let blockManipulating=false;
 
-// ---- Render ---------------------------------------------------------------
-export function render() {
-  ensureDom();
-  const pageHost = $("pageHost");
-  const overlay = $("overlay");
-  const view = $("view");
-
-  // Update sizes (page may have changed)
-  pageHost.style.width = mm(state.pageW) + "px";
-  pageHost.style.height = mm(state.pageH) + "px";
-  overlay.style.width = mm(state.pageW) + "px";
-  overlay.style.height = mm(state.pageH) + "px";
-
-  // Rebuild SVG
-  pageHost.innerHTML = "";
-  const svg = buildMonthSVG(state.year, state.month, { exportMode: false });
-  pageHost.appendChild(svg);
-
-  // Position calendar frame overlay
-  updateCalFrame();
-
-  // Apply view transform
-  applyView();
-
-  // Live-sync settings inputs for calX/Y/W/H while dragging/resizing (or any render)
-  dispatchSync(["calX","calY","calW","calH"]);
-}
-
-function updateCalFrame() {
-  const calFrame = $("calFrame");
-  if (!calFrame) return;
-  calFrame.style.left = mm(state.calX) + "px";
-  calFrame.style.top  = mm(state.calY) + "px";
-  calFrame.style.width  = mm(state.calW) + "px";
-  calFrame.style.height = mm(state.calH) + "px";
-}
-
-export function centerView() {
-  ensureDom();
-  const ws = $("workspace");
-  const view = $("view");
-  const pagePxW = mm(state.pageW);
-  const pagePxH = mm(state.pageH);
-  const s = clamp(state.view.scale || 1, 0.1, 8);
-
-  const x = Math.round((ws.clientWidth  - pagePxW * s)/2);
-  const y = Math.round((ws.clientHeight - pagePxH * s)/2);
-
-  state.view.scale = s;
-  state.view.x = x;
-  state.view.y = y;
-  state.view.userMoved = false;
-  applyView();
-}
-
-function applyView() {
-  const view = $("view");
-  if (!view) return;
-  const s = clamp(state.view.scale || 1, 0.1, 8);
-  view.style.transform = `translate(${Math.round(state.view.x||0)}px, ${Math.round(state.view.y||0)}px) scale(${s})`;
-}
-
-// ---- Drag / Resize calendar block ----------------------------------------
-const DRAG = { mode: null, sx:0, sy:0, start:{}, scale:1 };
-const PX_PER_MM = mm(1);
-
-function startCalMove(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  DRAG.mode = "cal-move";
-  DRAG.sx = e.clientX; DRAG.sy = e.clientY;
-  DRAG.scale = state.view.scale || 1;
-  DRAG.start = { calX: state.calX, calY: state.calY };
-  showHud(e);
-}
-function startCalResize(e, role) {
-  e.preventDefault();
-  e.stopPropagation();
-  DRAG.mode = "cal-resize";
-  DRAG.role = role;
-  DRAG.sx = e.clientX; DRAG.sy = e.clientY;
-  DRAG.scale = state.view.scale || 1;
-  DRAG.start = { calX: state.calX, calY: state.calY, calW: state.calW, calH: state.calH };
-  showHud(e);
-}
-
-function onPointerMove(e) {
-  if (!DRAG.mode) return;
-
-  const dx_px = (e.clientX - DRAG.sx);
-  const dy_px = (e.clientY - DRAG.sy);
-  const dx_mm = dx_px / (PX_PER_MM * DRAG.scale);
-  const dy_mm = dy_px / (PX_PER_MM * DRAG.scale);
-
-  if (DRAG.mode === "cal-move") {
-    state.calX = DRAG.start.calX + dx_mm;
-    state.calY = DRAG.start.calY + dy_mm;
-    render();
-    dispatchSync(["calX","calY"]);
-  } else if (DRAG.mode === "cal-resize") {
-    let { calX, calY, calW, calH } = DRAG.start;
-
-    if (DRAG.role.includes("e")) calW = Math.max(1, DRAG.start.calW + dx_mm);
-    if (DRAG.role.includes("s")) calH = Math.max(1, DRAG.start.calH + dy_mm);
-    if (DRAG.role.includes("w")) { calX = DRAG.start.calX + dx_mm; calW = Math.max(1, DRAG.start.calW - dx_mm); }
-    if (DRAG.role.includes("n")) { calY = DRAG.start.calY + dy_mm; calH = Math.max(1, DRAG.start.calH - dy_mm); }
-
-    state.calX = calX; state.calY = calY; state.calW = calW; state.calH = calH;
-    render();
-    dispatchSync(["calX","calY","calW","calH"]);
-  }
-
-  positionHud(e);
-  updateHudText();
-}
-
-function onPointerUp() {
-  if (!DRAG.mode) return;
-  DRAG.mode = null;
-  hideHud();
-}
-
-function bindCalInteractions() {
-  const calFrame = $("calFrame");
-  if (!calFrame) return;
-
-  // drag by interior
-  calFrame.addEventListener("pointerdown", (e)=>{
-    // Ignore if a handle
-    if (e.target && e.target.classList && e.target.classList.contains("handle")) return;
-    startCalMove(e);
-  });
-
-  // handles
-  calFrame.querySelectorAll(".handle").forEach(h=>{
-    h.addEventListener("pointerdown", (e)=> startCalResize(e, h.dataset.role));
-  });
-
-  window.addEventListener("pointermove", onPointerMove, { passive:false });
-  window.addEventListener("pointerup", onPointerUp, { passive:true });
-  window.addEventListener("pointercancel", onPointerUp, { passive:true });
-}
-
-// ---- Pan / Zoom workspace -------------------------------------------------
-const PAN = { active:false, sx:0, sy:0, x:0, y:0 };
-
-function bindPanZoom() {
-  const ws = $("workspace");
-  if (!ws) return;
-
-  ws.addEventListener("pointerdown", (e)=>{
-    // Start panning only if background is targeted (not the page/overlay)
-    const withinView = e.target.closest && e.target.closest("#view");
-    const withinPage = e.target.closest && e.target.closest("#pageHost");
-    const withinOverlay = e.target.closest && e.target.closest("#overlay");
-    if (withinOverlay || withinPage) return; // calendar interactions have priority
-
-    PAN.active = true; PAN.sx = e.clientX; PAN.sy = e.clientY;
-    PAN.x = state.view.x || 0; PAN.y = state.view.y || 0;
-    ws.setPointerCapture && ws.setPointerCapture(e.pointerId);
-  });
-
-  ws.addEventListener("pointermove", (e)=>{
-    if (!PAN.active) return;
-    const dx = e.clientX - PAN.sx;
-    const dy = e.clientY - PAN.sy;
-    state.view.x = PAN.x + dx;
-    state.view.y = PAN.y + dy;
-    state.view.userMoved = true;
-    applyView();
-    positionHud(e); // move HUD if visible
-  });
-
-  const endPan = ()=>{ PAN.active=false; };
-  ws.addEventListener("pointerup", endPan, { passive:true });
-  ws.addEventListener("pointercancel", endPan, { passive:true });
-
-  // Wheel zoom, centered on cursor
-  ws.addEventListener("wheel", (e)=>{
-    if (e.ctrlKey) return; // let browser gesture zoom be
-    e.preventDefault();
-    const s0 = state.view.scale || 1;
-    const delta = e.deltaY;
-    const k = Math.exp(-delta * 0.0015);
-    const s1 = clamp(s0 * k, 0.2, 8);
-
-    // zoom about cursor
-    const rect = ws.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const tx = (cx - state.view.x)/s0;
-    const ty = (cy - state.view.y)/s0;
-
-    state.view.x = cx - tx * s1;
-    state.view.y = cy - ty * s1;
-    state.view.scale = s1;
-    state.view.userMoved = true;
-    applyView();
-  }, { passive:false });
-}
-
-// ---- HUD (drag info) ------------------------------------------------------
-function showHud(e){
-  const hud = $("dragHud"); if(!hud) return;
-  hud.style.display = "block";
-  updateHudText();
-  positionHud(e);
-}
-function hideHud(){ const hud=$("dragHud"); if(hud) hud.style.display="none"; }
-function updateHudText(){
-  const hud = $("dragHud"); if(!hud) return;
-  hud.textContent =
-    `x:${state.calX.toFixed(1)} y:${state.calY.toFixed(1)}  w:${state.calW.toFixed(1)} h:${state.calH.toFixed(1)} mm`;
-}
-function positionHud(e){
-  const hud = $("dragHud"); if(!hud) return;
-  const isTouch = (e && e.pointerType === "touch");
-  const offX = isTouch ? 24 : 12;
-  const offY = isTouch ? -72 : 12; // above/right of finger on touch
-
-  let left = (e ? e.clientX : 12) + offX;
-  let top  = (e ? e.clientY : 12) + offY;
-
-  const pad = 8;
-  const r = hud.getBoundingClientRect();
-  left = Math.max(pad, Math.min(left, window.innerWidth  - r.width  - pad));
-  top  = Math.max(pad, Math.min(top,  window.innerHeight - r.height - pad));
-  hud.style.left = left + "px";
-  hud.style.top  = top  + "px";
-}
-
-// ---- Month cycling (keyboard) ---------------------------------------------
-function changeMonth(delta){
-  let m = state.month + delta;
-  let y = state.year;
-  while (m < 0) { m += 12; y -= 1; }
-  while (m > 11){ m -= 12; y += 1; }
-  state.month = m; state.year = y;
-  render();
-  // ask Settings (if present) to reflect month/year inputs
-  dispatchSync(["month","year"]);
-}
-
-function bindKeys(){
-  window.addEventListener("keydown",(e)=>{
-    const tag = (e.target && e.target.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.isComposing) return;
-
-    if (e.key === "ArrowLeft") { changeMonth(-1); e.preventDefault(); }
-    else if (e.key === "ArrowRight") { changeMonth(+1); e.preventDefault(); }
-    else if (e.key === "PageUp") { changeMonth(e.shiftKey ? -12 : -1); e.preventDefault(); }
-    else if (e.key === "PageDown") { changeMonth(e.shiftKey ? +12 : +1); e.preventDefault(); }
-    else if (e.key === '+') { state.view.scale = clamp((state.view.scale||1)*1.1, 0.2, 8); applyView(); }
-    else if (e.key === '-') { state.view.scale = clamp((state.view.scale||1)/1.1, 0.2, 8); applyView(); }
-    else if (e.key === '0') { centerView(); }
-  });
-}
-
-// ---- Settings sync event ---------------------------------------------------
-function dispatchSync(keys){
-  try {
-    window.dispatchEvent(new CustomEvent("darcal:state-sync", { detail: keys }));
-  } catch {}
-}
-
-// ---- Public init ----------------------------------------------------------
 export function initWorkspace(){
-  ensureDom();
-  bindPanZoom();
-  bindCalInteractions();
-  bindKeys();
-  // keep the page centered on first load if user hasn't moved yet
-  if (!state.view.userMoved) centerView();
-  render();
+  previewHost=$("preview"); hud=$("hud");
+  stage=document.createElement("div"); stage.id="stage"; previewHost.appendChild(stage);
+  wirePanZoom();
+  window.addEventListener("resize", ()=>{ if(!state.view.userMoved) centerView(); drawRulers(); });
 }
 
-// Export helpers for other modules
-window.buildMonthForExport = (y,m)=> {
-  const svg = buildMonthSVG(y, m, { exportMode:true });
-  return svg.outerHTML;
-};
+export function render(){
+  stage.innerHTML="";
+  const svg=buildMonthSVG(state.year,state.month,{exportMode:false});
+  svg.style.maxWidth="100%"; svg.style.height="auto";
+  stage.appendChild(svg);
+
+  if(state.showGuides){
+    const svgns="http://www.w3.org/2000/svg";
+    const ov=document.createElementNS(svgns,"g");
+    ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
+
+    const hit=document.createElementNS(svgns,"rect");
+    hit.setAttribute("x",-mm(4)); hit.setAttribute("y",-mm(4));
+    hit.setAttribute("width",mm(state.calW)+mm(8)); hit.setAttribute("height",mm(state.calH)+mm(8));
+    hit.setAttribute("fill","rgba(0,0,0,0)"); hit.style.cursor="move"; hit.dataset.role="move";
+    ov.appendChild(hit);
+
+    const guide=document.createElementNS(svgns,"rect");
+    guide.setAttribute("x",0); guide.setAttribute("y",0);
+    guide.setAttribute("width",mm(state.calW)); guide.setAttribute("height",mm(state.calH));
+    guide.setAttribute("class","guide"); guide.dataset.role="move"; guide.style.cursor="move";
+    ov.appendChild(guide);
+
+    const size=mm(4.5);
+    const pos=[["nw",0,0],["n",mm(state.calW)/2,0],["ne",mm(state.calW),0],
+               ["w",0,mm(state.calH)/2],["e",mm(state.calW),mm(state.calH)/2],
+               ["sw",0,mm(state.calH)],["s",mm(state.calW)/2,mm(state.calH)],["se",mm(state.calW),mm(state.calH)]];
+    pos.forEach(([name,x,y])=>{
+      const h=document.createElementNS(svgns,"rect");
+      h.setAttribute("x",x-size/2); h.setAttribute("y",y-size/2);
+      h.setAttribute("width",size); h.setAttribute("height",size); h.setAttribute("rx",mm(0.8));
+      h.setAttribute("class","handle"); h.dataset.role=name;
+      h.style.cursor=({"nw":"nwse-resize","se":"nwse-resize","ne":"nesw-resize","sw":"nesw-resize","n":"ns-resize","s":"ns-resize","w":"ew-resize","e":"ew-resize"})[name];
+      ov.appendChild(h);
+      const fat=document.createElementNS(svgns,"rect");
+      const pad=mm(6);
+      fat.setAttribute("x",x-pad); fat.setAttribute("y",y-pad);
+      fat.setAttribute("width",pad*2); fat.setAttribute("height",pad*2);
+      fat.setAttribute("fill","rgba(0,0,0,0)");
+      fat.dataset.role=name; fat.style.cursor=h.style.cursor;
+      ov.appendChild(fat);
+    });
+
+    svg.appendChild(ov);
+    wireDrag(svg,ov);
+  }
+
+  applyView();
+}
+
+export function applyView(){
+  const {scale,tx,ty}=state.view;
+  stage.style.transform=`translate(${tx}px, ${ty}px) scale(${scale})`;
+}
+export function centerView(){
+  const svg = stage.querySelector("svg"); if(!svg) return;
+  const rect=svg.getBoundingClientRect();
+  const host=previewHost.getBoundingClientRect();
+  const sc=state.view.scale;
+  state.view.tx = (host.width  - rect.width * sc)/2;
+  state.view.ty = (host.height - rect.height* sc)/2;
+  applyView();
+}
+
+function screenToWorld(sx, sy){
+  const sc=state.view.scale;
+  return { x:(sx - state.view.tx)/sc, y:(sy - state.view.ty)/sc };
+}
+export function zoomAtPoint(factor, cx, cy){
+  const before = screenToWorld(cx, cy);
+  state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
+  const after = screenToWorld(cx, cy);
+  state.view.tx += (before.x - after.x) * state.view.scale;
+  state.view.ty += (before.y - after.y) * state.view.scale;
+  applyView(); drawRulers();
+}
+
+function wirePanZoom(){
+  let isPanning=false, panStart=null;
+
+  previewHost.addEventListener("wheel",(e)=>{
+    if(e.ctrlKey) return;
+    e.preventDefault();
+    state.view.userMoved=true;
+    const rect=previewHost.getBoundingClientRect();
+    const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
+    zoomAtPoint(e.deltaY < 0 ? 1.1 : 1/1.1, cx, cy);
+  }, {passive:false});
+
+  previewHost.addEventListener("pointerdown",(e)=>{
+    if(blockManipulating) return;
+    if(e.target.closest('svg [data-role]')) return;
+    isPanning=true; state.view.userMoved=true;
+    panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
+    previewHost.setPointerCapture && previewHost.setPointerCapture(e.pointerId);
+  });
+  previewHost.addEventListener("pointermove",(e)=>{
+    if(!isPanning) return;
+    const dx=e.clientX - panStart.x, dy=e.clientY - panStart.y;
+    state.view.tx = panStart.tx + dx;
+    state.view.ty = panStart.ty + dy;
+    applyView(); drawRulers();
+  });
+  const endPan=()=>{ isPanning=false; };
+  previewHost.addEventListener("pointerup", endPan, {passive:true});
+  previewHost.addEventListener("pointercancel", endPan, {passive:true});
+
+  // touch pan & pinch — guarded by blockManipulating
+  let touches=new Map();
+  previewHost.addEventListener("touchmove",(e)=>{
+    if(blockManipulating) return;
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      const prev=touches.get(t.identifier)||{x:t.clientX,y:t.clientY};
+      state.view.tx += (t.clientX - prev.x);
+      state.view.ty += (t.clientY - prev.y);
+      touches.set(t.identifier,{x:t.clientX,y:t.clientY});
+      state.view.userMoved=true;
+      applyView(); drawRulers();
+    }else if(e.touches.length===2){
+      e.preventDefault();
+      const [a,b]=e.touches;
+      const pa=touches.get(a.identifier)||{x:a.clientX,y:a.clientY};
+      const pb=touches.get(b.identifier)||{x:b.clientX,y:b.clientY};
+      const prevDist=Math.hypot(pa.x-pb.x, pa.y-pb.y) || 1;
+      const newDist=Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY) || 1;
+      const rect=previewHost.getBoundingClientRect();
+      const midX=((a.clientX+b.clientX)/2) - rect.left;
+      const midY=((a.clientY+b.clientY)/2) - rect.top;
+      zoomAtPoint(newDist/prevDist, midX, midY);
+      touches.set(a.identifier, {x:a.clientX,y:a.clientY});
+      touches.set(b.identifier, {x:b.clientX,y:b.clientY});
+      state.view.userMoved=true;
+    }
+  }, {passive:false});
+  previewHost.addEventListener("touchend",(e)=>{ for(const t of e.changedTouches) touches.delete(t.identifier); }, {passive:true});
+}
+
+function wireDrag(svg,ov){
+  let active=null;
+  const onDown=e=>{
+    const role=(e.target&&e.target.dataset)?e.target.dataset.role:null; if(!role)return;
+    e.preventDefault();
+    blockManipulating = true;
+    if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+    active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
+    hud.style.display="block";
+  };
+  const onMove=e=>{
+    if(!active)return;
+    const dxmm=(e.clientX-active.mx)/PX_PER_MM, dymm=(e.clientY-active.my)/PX_PER_MM;
+    let {x,y,w,h}=active.start; const minW=10,minH=10;
+    if(active.role==="move"){x+=dxmm;y+=dymm}
+    else if(active.role==="e"){w=Math.max(minW, w+dxmm)}
+    else if(active.role==="w"){x+=dxmm;w=Math.max(minW, w-dxmm)}
+    else if(active.role==="s"){h=Math.max(minH, h+dymm)}
+    else if(active.role==="n"){y+=dymm;h=Math.max(minH, h-dymm)}
+    else if(active.role==="se"){w=Math.max(minW, w+dxmm);h=Math.max(minH, h+dymm)}
+    else if(active.role==="ne"){w=Math.max(minW, w+dxmm);y+=dymm;h=Math.max(minH, h-dymm)}
+    else if(active.role==="sw"){x+=dxmm;w=Math.max(minW, w-dxmm);h=Math.max(minH, h+dymm)}
+    else if(active.role==="nw"){x+=dxmm;y+=dymm;w=Math.max(minW, w-dxmm);h=Math.max(minH, h-dymm)}
+    x=Math.max(0, Math.min(x, state.pageW-w)); y=Math.max(0, Math.min(y, state.pageH-h));
+    state.calX=Math.round(x*10)/10; state.calY=Math.round(y*10)/10; state.calW=Math.round(w*10)/10; state.calH=Math.round(h*10)/10;
+    ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
+    const grect=ov.querySelector('rect.guide');
+    grect.setAttribute("width",mm(state.calW)); grect.setAttribute("height",mm(state.calH));
+    const wpx=mm(state.calW), hpx=mm(state.calH), size=mm(4.5);
+    ov.querySelectorAll('.handle').forEach(hh=>{
+      const role=hh.dataset.role; let hx=0,hy=0;
+      if(role.includes("e"))hx=wpx; if(role.includes("w"))hx=0;
+      if(role==="n"||role==="s")hx=wpx/2;
+      if(role.includes("s"))hy=hpx; if(role.includes("n"))hy=0;
+      if(role==="w"||role==="e")hy=hpx/2;
+      hh.setAttribute("x",hx-size/2); hh.setAttribute("y",hy-size/2);
+    });
+    const vb=previewHost.getBoundingClientRect();
+    hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
+    hud.style.left=(e.clientX - vb.left + 12)+"px";
+    hud.style.top =(e.clientY - vb.top  + 12)+"px";
+  };
+  const end=()=>{active=null; hud.style.display="none"; blockManipulating=false; render();};
+  ov.addEventListener("pointerdown",onDown, {passive:false});
+  svg.addEventListener("pointermove",onMove, {passive:false});
+  svg.addEventListener("pointerup",end, {passive:true});
+  svg.addEventListener("pointercancel",end, {passive:true});
+}
