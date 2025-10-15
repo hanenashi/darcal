@@ -146,7 +146,6 @@ export function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // guidelines FRONT (but under overlay handles)
   if(state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");

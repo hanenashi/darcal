@@ -4,7 +4,6 @@ import { drawRulers } from './rulers.js';
 
 let previewHost, stage, hud;
 let blockManipulating=false;
-
 export function setBlockManipulating(v){ blockManipulating=v; }
 
 export function initWorkspace(){
@@ -16,10 +15,10 @@ export function initWorkspace(){
     const win=document.querySelector(".sheet-card");
     const sheet=$("sheet");
     const btn=$("settingsBtn");
-    if(sheet.getAttribute("aria-hidden")==="false"){
+    if(sheet.dataset.open==="true"){
       const path=e.composedPath();
       const inside = path.includes(win) || path.includes(btn);
-      if(!inside) sheet.setAttribute("aria-hidden","true");
+      if(!inside){ sheet.dataset.open="false"; sheet.setAttribute("inert",""); btn.focus(); }
     }
   });
   window.addEventListener("resize", ()=>{ if(!state.view.userMoved) centerView(); drawRulers(); });
@@ -170,8 +169,6 @@ function wireDrag(svg,ov){
     e.preventDefault();
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
-    blockManipulating=true;
-    document.getElementById('hud').style.display="block";
   };
   const onMove=e=>{
     if(!active)return;
@@ -188,7 +185,6 @@ function wireDrag(svg,ov){
     else if(active.role==="nw"){x+=dxmm;y+=dymm;w=Math.max(minW, w-dxmm);h=Math.max(minH, h-dymm)}
     x=Math.max(0, Math.min(x, state.pageW-w)); y=Math.max(0, Math.min(y, state.pageH-h));
     state.calX=Math.round(x*10)/10; state.calY=Math.round(y*10)/10; state.calW=Math.round(w*10)/10; state.calH=Math.round(h*10)/10;
-
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
     const grect=ov.querySelector('rect.guide');
     grect.setAttribute("width",mm(state.calW)); grect.setAttribute("height",mm(state.calH));
@@ -201,13 +197,12 @@ function wireDrag(svg,ov){
       if(role==="w"||role==="e")hy=hpx/2;
       hh.setAttribute("x",hx-size/2); hh.setAttribute("y",hy-size/2);
     });
-
     const vb=previewHost.getBoundingClientRect();
     const hud=$('hud'); hud.textContent=`X:${state.calX} Y:${state.calY}  W:${state.calW} H:${state.calH} mm`;
     hud.style.left=(e.clientX - vb.left + 12)+"px";
     hud.style.top =(e.clientY - vb.top  + 12)+"px";
   };
-  const end=()=>{active=null; blockManipulating=false; $('hud').style.display="none"; render();};
+  const end=()=>{active=null; $('hud').style.display="none"; render();};
   ov.addEventListener("pointerdown",onDown, {passive:false});
   svg.addEventListener("pointermove",onMove, {passive:false});
   svg.addEventListener("pointerup",end, {passive:true});

@@ -1,9 +1,8 @@
 import { state, $, clamp, PX_PER_MM } from './js/state.js';
 import { render, applyView, centerView, zoomAtPoint, initWorkspace } from './js/workspace.js';
-import { initSettings, morphOpenFromButton, morphCloseToButton } from './js/settings.js';
+import { initSettings, openSheetSnap, closeSheetSnap } from './js/settings.js';
 import { drawRulers, initRulers } from './js/rulers.js';
 
-/* ===== boot ===== */
 function setupHotkeys(){
   document.addEventListener("keydown", (e)=>{
     const tag=(e.target && e.target.tagName)||"";
@@ -15,29 +14,22 @@ function setupHotkeys(){
       const rect=document.getElementById('preview').getBoundingClientRect();
       zoomAtPoint(1.1, rect.width/2, rect.height/2);
       state.view.userMoved=true;
-      drawRulers();
-      return;
+      drawRulers(); return;
     }
     if(e.key==='-' || e.key==='_'){
       e.preventDefault();
       const rect=document.getElementById('preview').getBoundingClientRect();
       zoomAtPoint(1/1.1, rect.width/2, rect.height/2);
       state.view.userMoved=true;
-      drawRulers();
-      return;
+      drawRulers(); return;
     }
     if(e.key==='o' || e.key==='O'){
       e.preventDefault();
-      if (document.getElementById('sheet').getAttribute('aria-hidden')==='true'){
-        morphOpenFromButton();
-      }else{
-        morphCloseToButton();
-      }
+      const isOpen = document.getElementById('sheet').dataset.open==="true";
+      if (!isOpen){ openSheetSnap(); } else { closeSheetSnap(); }
       return;
     }
-    if(e.key==='Escape'){
-      morphCloseToButton(); return;
-    }
+    if(e.key==='Escape'){ closeSheetSnap(); return; }
     if(e.key==='r' || e.key==='R'){
       state.rulersOn = !state.rulersOn; document.getElementById('chkRulers').checked = state.rulersOn; drawRulers(); return;
     }
@@ -47,13 +39,11 @@ function setupHotkeys(){
 function init(){
   initWorkspace();
   initRulers();
-  initSettings({ onChange: ()=>{ render(); drawRulers(); }, onOpen:morphOpenFromButton, onClose:morphCloseToButton });
+  initSettings({ onChange: ()=>{ render(); drawRulers(); }, onOpen:openSheetSnap, onClose:closeSheetSnap });
   render();
   centerView();
   drawRulers();
   setupHotkeys();
 }
-
 if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded', init);
-
 import './export-bridge.js';

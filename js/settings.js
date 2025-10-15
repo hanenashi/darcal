@@ -49,69 +49,41 @@ export function initSettings({onChange, onOpen, onClose}){
 
   $("generate")?.addEventListener("click",()=>openPreviewAndZip());
 
-  // Morph open/close
   $("settingsBtn").addEventListener("pointerup", (e)=>{
     if(e.pointerType==='mouse' && e.button!==0) return;
-    if ($("sheet").getAttribute("aria-hidden")==="true") onOpen(); else onClose();
+    const isOpen = $("sheet").dataset.open==="true";
+    if (!isOpen) openSheetSnap(); else closeSheetSnap();
   });
 
-  // draggable button (position persistence)
   setupSettingsButtonDrag();
-
-  // draggable header
   setupWindowDrag();
+  setupWindowResize();
 
-  $("closeSheet").addEventListener("click", ()=> onClose());
+  $("closeSheet").addEventListener("click", ()=> closeSheetSnap());
   $("resetView").addEventListener("click", ()=>{ state.view.scale=1; state.view.userMoved=false; centerView(); drawRulers(); });
+  $("sheetTitle").addEventListener("click", ()=> closeSheetSnap());
 }
 
-/* ===== Morphing (FLIP) ===== */
-export function morphOpenFromButton(){
-  const btn = $("settingsBtn");
-  const card = document.querySelector(".sheet-card");
-  const sheet = $("sheet");
-  sheet.setAttribute("aria-hidden","false");
-  const br = btn.getBoundingClientRect();
-  const cr = card.getBoundingClientRect();
-  const dx = (br.left + br.width/2) - (cr.left + cr.width/2);
-  const dy = (br.top  + br.height/2) - (cr.top  + cr.height/2);
-  const sx = Math.max(0.2, br.width  / Math.max(1, cr.width));
-  const sy = Math.max(0.2, br.height / Math.max(1, cr.height));
-  card.style.transform = `translate(-50%,-50%) translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-  card.style.opacity = 0.001;
-  requestAnimationFrame(()=>{
-    btn.style.opacity = 0;
-    card.style.opacity = 1;
-    card.style.transform = `translate(-50%,-50%)`;
-  });
+/* ===== SNAP open/close aligned to button's top-left ===== */
+export function openSheetSnap(){
+  const sheet=$("sheet"); const card=document.querySelector(".sheet-card"); const btn=$("settingsBtn");
+  const br=btn.getBoundingClientRect();
+  card.style.left = br.left + "px";
+  card.style.top  = br.top + "px";
+  sheet.dataset.open="true";
+  sheet.removeAttribute("inert");
+  // focus first interactive
+  setTimeout(()=>{ $("closeSheet")?.focus({preventScroll:true}); }, 0);
+}
+export function closeSheetSnap(){
+  const sheet=$("sheet"); const btn=$("settingsBtn");
+  // Move focus out of the dialog before hiding to avoid aria-hidden warning
+  btn.focus({preventScroll:true});
+  sheet.dataset.open="false";
+  sheet.setAttribute("inert","");
 }
 
-export function morphCloseToButton(){
-  const btn = $("settingsBtn");
-  const card = document.querySelector(".sheet-card");
-  const br = btn.getBoundingClientRect();
-  const cr = card.getBoundingClientRect();
-  const dx = (br.left + br.width/2) - (cr.left + cr.width/2);
-  const dy = (br.top  + br.height/2) - (cr.top  + cr.height/2);
-  const sx = Math.max(0.2, br.width  / Math.max(1, cr.width));
-  const sy = Math.max(0.2, br.height / Math.max(1, cr.height));
-  card.style.opacity = 1;
-  card.style.transform = `translate(-50%,-50%)`;
-  requestAnimationFrame(()=>{
-    card.style.opacity = 0.001;
-    card.style.transform = `translate(-50%,-50%) translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-    card.addEventListener("transitionend", function done(){
-      card.removeEventListener("transitionend", done);
-      document.getElementById("sheet").setAttribute("aria-hidden","true");
-      btn.style.opacity = 1;
-      // restore center after close
-      card.style.transform = `translate(-50%,-50%)`;
-      card.style.opacity = 0;
-    }, {once:true});
-  });
-}
-
-/* ===== window drag with touch-friendly behavior ===== */
+/* ===== window drag ===== */
 function setupWindowDrag(){
   const win = document.querySelector(".sheet-card");
   const dragHandle = $("sheetDragHandle");
@@ -119,7 +91,7 @@ function setupWindowDrag(){
   let dragging=false, sx=0, sy=0, sl=0, st=0;
 
   dragHandle.addEventListener("pointerdown",(e)=>{
-    if (e.target.closest('.sheet-actions') || e.target.tagName==='BUTTON') return;
+    if (e.target.closest('.sheet-actions') || e.target.tagName==='BUTTON' || e.target.id==='sheetTitle') return;
     const r=win.getBoundingClientRect();
     dragging=true; sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
     dragHandle.setPointerCapture && dragHandle.setPointerCapture(e.pointerId);
@@ -134,7 +106,6 @@ function setupWindowDrag(){
     nt = Math.max(0, Math.min(nt, window.innerHeight - 80));
     win.style.left = nl + "px";
     win.style.top  = nt + "px";
-    win.style.transform = "translate(0,0)";
   }, {passive:false});
 
   const end=()=>{ if(!dragging) return; dragging=false; };
@@ -142,25 +113,63 @@ function setupWindowDrag(){
   window.addEventListener("pointercancel", end, {passive:true});
 }
 
-/* draggable Settings button (fix weird resize-on-drag & persist pos) */
+/* ===== window resize (8 handles) ===== */
+function setupWindowResize(){
+  const win = document.querySelector(".sheet-card"); if(!win) return;
+  const handles = Array.from(win.querySelectorAll(".win-handle"));
+  let active=null;
+  const minW=320, minH=320;
+
+  handles.forEach(h=>{
+    h.addEventListener("pointerdown",(e)=>{
+      const r=win.getBoundingClientRect();
+      active={role:h.dataset.role, sx:e.clientX, sy:e.clientY, left:r.left, top:r.top, w:r.width, h:r.height};
+      h.setPointerCapture && h.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }, {passive:false});
+  });
+  window.addEventListener("pointermove",(e)=>{
+    if(!active) return;
+    let {role,sx,sy,left,top,w,h}=active;
+    let dx = e.clientX - sx, dy = e.clientY - sy;
+    let nl=left, nt=top, nw=w, nh=h;
+
+    if(role.includes('e')) nw = Math.max(minW, w + dx);
+    if(role.includes('s')) nh = Math.max(minH, h + dy);
+    if(role.includes('w')){ nl = left + dx; nw = Math.max(minW, w - dx); }
+    if(role.includes('n')){ nt = top  + dy; nh = Math.max(minH, h - dy); }
+
+    // keep on screen
+    nl = Math.max(0, Math.min(nl, window.innerWidth - 100));
+    nt = Math.max(0, Math.min(nt, window.innerHeight - 100));
+
+    win.style.left = nl + "px"; win.style.top = nt + "px";
+    win.style.width = nw + "px"; win.style.height = nh + "px";
+  }, {passive:false});
+  const end=()=>{ active=null; };
+  window.addEventListener("pointerup", end, {passive:true});
+  window.addEventListener("pointercancel", end, {passive:true});
+}
+
+/* draggable Settings button */
 function setupSettingsButtonDrag(){
   const btn = $("settingsBtn"); if(!btn) return;
   try{
     const s = JSON.parse(localStorage.getItem("settings-btn-pos")||"{}");
     if (s && s.l!=null && s.t!=null){ btn.style.left=s.l+"px"; btn.style.top=s.t+"px"; btn.style.right="auto"; btn.style.bottom="auto"; }
   }catch{}
-  let dragging=false, sx=0, sy=0, sl=0, st=0, moved=false;
+  let dragging=false, sx=0, sy=0, sl=0, st=0;
   btn.addEventListener("pointerdown",(e)=>{
-    dragging=true; moved=false; btn.classList.add("dragging");
+    dragging=true;
     const r=btn.getBoundingClientRect();
     sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
     btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
+    btn.classList.add("dragging");
     btn.style.right="auto"; btn.style.bottom="auto";
   });
   window.addEventListener("pointermove",(e)=>{
     if(!dragging) return;
     const dx=e.clientX-sx, dy=e.clientY-sy;
-    if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
     const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - btn.offsetWidth - 8));
     const nt=Math.max(8, Math.min(st+dy, window.innerHeight - btn.offsetHeight - 8));
     btn.style.left=nl+"px"; btn.style.top=nt+"px";
@@ -208,7 +217,7 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   if(sel.value!=="__custom__") row.classList.add("hidden");
 }
 
-/* ZIP helpers injected in export bridge */
+/* ===== Preview + ZIP ===== */
 function openPreviewAndZip(){
   const w=window.open("","_blank"); if(!w){alert("Popup blocked.");return}
   w.document.title=`Calendar ${state.year} — Preview`;
