@@ -11,211 +11,215 @@
 </head>
 <body>
   <div id="preview" class="preview">
-    <!-- ruler canvases (drawn dynamically) -->
+    <!-- rulers -->
     <canvas id="rulerTop" class="ruler ruler-top" width="0" height="0"></canvas>
     <canvas id="rulerLeft" class="ruler ruler-left" width="0" height="0"></canvas>
+    <div id="rulerCorner" class="ruler-corner"></div>
     <div id="hud" class="hud" style="display:none"></div>
   </div>
 
-  <!-- Draggable Settings button (starts alone) -->
-  <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">Settings</button>
+  <!-- Settings wrapper (button morphs into panel) -->
+  <div id="settingsWrap" class="settings-wrap">
+    <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">Settings</button>
 
-  <!-- Floating settings window (starts CLOSED) -->
-  <div id="sheet" class="sheet" aria-hidden="true">
-    <div class="sheet-card" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
-      <div class="sheet-header" id="sheetDragHandle">
-        <h1 id="sheetTitle">Settings</h1>
-        <div class="sheet-actions">
-          <button id="resetView" class="icon-btn" title="Reset view">⤾</button>
-          <button id="closeSheet" class="icon-btn" aria-label="Close">✕</button>
+    <!-- the panel exists but is shown via FLIP morph -->
+    <div id="sheet" class="sheet" aria-hidden="true">
+      <div class="sheet-card" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
+        <div class="sheet-header" id="sheetDragHandle">
+          <h1 id="sheetTitle">Settings</h1>
+          <div class="sheet-actions">
+            <label class="row chk-inline" title="Toggle rulers (R)"><input id="chkRulers" type="checkbox"> Rulers</label>
+            <button id="resetView" class="icon-btn" title="Reset view">⤾</button>
+            <button id="closeSheet" class="icon-btn" aria-label="Close">✕</button>
+          </div>
         </div>
-      </div>
 
-      <div class="sheet-body">
-        <section>
-          <h2>Language & Labels</h2>
-          <div class="grid2">
+        <div class="sheet-body">
+          <section>
+            <h2>Language & Labels</h2>
+            <div class="grid2">
+              <div class="row">
+                <label>Preset</label>
+                <select id="lang">
+                  <option value="ENG">ENG — English</option>
+                  <option value="CZE">CZE — Čeština</option>
+                  <option value="JA">JA — 日本語</option>
+                </select>
+              </div>
+              <div class="row"><label>Full names</label><input id="fullNames" type="checkbox"></div>
+            </div>
+            <div class="row">
+              <label>First day</label>
+              <select id="firstDay"><option value="0">Sunday</option><option value="1">Monday (ISO)</option></select>
+            </div>
+          </section>
+
+          <section>
+            <h2>Year & Month</h2>
+            <div class="grid2">
+              <div class="row"><label>Year</label><input id="year" type="number" step="1"></div>
+              <div class="row"><label>Month</label><select id="month"></select></div>
+            </div>
+            <div class="row">
+              <button id="prevM">◀</button>
+              <button id="nextM">▶</button>
+            </div>
+          </section>
+
+          <section>
+            <h2>Document</h2>
             <div class="row">
               <label>Preset</label>
-              <select id="lang">
-                <option value="ENG">ENG — English</option>
-                <option value="CZE">CZE — Čeština</option>
-                <option value="JA">JA — 日本語</option>
+              <select id="pagePreset">
+                <option value="A4P">A4 Portrait (210×297)</option>
+                <option value="A4L">A4 Landscape (297×210)</option>
+                <option value="A5P">A5 Portrait (148×210)</option>
+                <option value="A5L">A5 Landscape (210×148)</option>
+                <option value="B5P">B5 Portrait (176×250)</option>
+                <option value="B5L">B5 Landscape (250×176)</option>
+                <option value="B4P">B4 Portrait (250×353)</option>
+                <option value="B4L">B4 Landscape (353×250)</option>
+                <option value="CUSTOM">Custom (mm)</option>
               </select>
             </div>
-            <div class="row"><label>Full names</label><input id="fullNames" type="checkbox"></div>
-          </div>
-          <div class="row">
-            <label>First day</label>
-            <select id="firstDay"><option value="0">Sunday</option><option value="1">Monday (ISO)</option></select>
-          </div>
-        </section>
+            <div class="grid2">
+              <div class="row"><label>Page W (mm)</label><input id="pageW" type="number" value="210" step="1"></div>
+              <div class="row"><label>Page H (mm)</label><input id="pageH" type="number" value="297" step="1"></div>
+            </div>
+          </section>
 
-        <section>
-          <h2>Year & Month</h2>
-          <div class="grid2">
-            <div class="row"><label>Year</label><input id="year" type="number" step="1"></div>
-            <div class="row"><label>Month</label><select id="month"></select></div>
-          </div>
-          <div class="row">
-            <button id="prevM">◀</button>
-            <button id="nextM">▶</button>
-          </div>
-        </section>
+          <section>
+            <h2>Calendar Block (mm)</h2>
+            <div class="grid2">
+              <div class="row"><label>X</label><input id="calX" type="number" step=".5"></div>
+              <div class="row"><label>Y</label><input id="calY" type="number" step=".5"></div>
+              <div class="row"><label>Width</label><input id="calW" type="number" step=".5"></div>
+              <div class="row"><label>Height</label><input id="calH" type="number" step=".5"></div>
+            </div>
+            <div class="row"><label>Show guides</label><input id="showGuides" type="checkbox" checked></div>
+          </section>
 
-        <section>
-          <h2>Document</h2>
-          <div class="row">
-            <label>Preset</label>
-            <select id="pagePreset">
-              <option value="A4P">A4 Portrait (210×297)</option>
-              <option value="A4L">A4 Landscape (297×210)</option>
-              <option value="A5P">A5 Portrait (148×210)</option>
-              <option value="A5L">A5 Landscape (210×148)</option>
-              <option value="B5P">B5 Portrait (176×250)</option>
-              <option value="B5L">B5 Landscape (250×176)</option>
-              <option value="B4P">B4 Portrait (250×353)</option>
-              <option value="B4L">B4 Landscape (353×250)</option>
-              <option value="CUSTOM">Custom (mm)</option>
-            </select>
-          </div>
-          <div class="grid2">
-            <div class="row"><label>Page W (mm)</label><input id="pageW" type="number" value="210" step="1"></div>
-            <div class="row"><label>Page H (mm)</label><input id="pageH" type="number" value="297" step="1"></div>
-          </div>
-        </section>
+          <section>
+            <h2>Header</h2>
+            <div class="row"><label>Text</label><input id="hdrText" type="text" value="{MONTH} {YEAR}"></div>
+            <div class="grid2">
+              <div class="row"><label>Font</label>
+                <select id="hdrFontSel">
+                  <option value="Inter, Arial">Inter</option>
+                  <option value="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial">System UI</option>
+                  <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
+                  <option value="Arial, Helvetica, sans-serif">Arial</option>
+                  <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+                  <option value="'Times New Roman', Times, serif">Times</option>
+                  <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+              </div>
+              <div class="row"><label>Size (pt)</label><input id="hdrSize" type="number" value="18" step=".5"></div>
+            </div>
+            <div class="row hidden" id="hdrFontCustomRow"><label>Custom font CSS</label><input id="hdrFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
+            <div class="grid2">
+              <div class="row"><label>Align</label>
+                <select id="hdrAlign"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+              </div>
+              <div class="row"><label>Margin B (mm)</label><input id="hdrGap" type="number" value="6" step=".5"></div>
+            </div>
+          </section>
 
-        <section>
-          <h2>Calendar Block (mm)</h2>
-          <div class="grid2">
-            <div class="row"><label>X</label><input id="calX" type="number" step=".5"></div>
-            <div class="row"><label>Y</label><input id="calY" type="number" step=".5"></div>
-            <div class="row"><label>Width</label><input id="calW" type="number" step=".5"></div>
-            <div class="row"><label>Height</label><input id="calH" type="number" step=".5"></div>
-          </div>
-          <div class="row"><label>Show guides</label><input id="showGuides" type="checkbox" checked></div>
-        </section>
+          <section>
+            <h2>Grid & Cells</h2>
+            <div class="grid2">
+              <div class="row"><label>Stroke (pt)</label><input id="cellStrokePt" type="number" value="0.6" step=".1"></div>
+              <div class="row"><label>Radius (mm)</label><input id="cellRadius" type="number" value="2" step=".2"></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Gutter X (mm)</label><input id="gutX" type="number" value="2" step=".2"></div>
+              <div class="row"><label>Gutter Y (mm)</label><input id="gutY" type="number" value="2" step=".2"></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Table lines</label><input id="tableLines" type="checkbox"></div>
+              <div class="row"><label>Hide empty cells</label><input id="hideEmpty" type="checkbox"></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Prev/next numbers</label><input id="showAdj" type="checkbox"></div>
+              <div class="row"><label>Adj shade %</label><input id="adjAlpha" type="number" value="55" min="10" max="90" step="5"></div>
+            </div>
+            <div class="grid2">
+              <div class="row"><label>Table stroke (pt)</label><input id="tableStrokePt" type="number" value="0.8" step=".1"></div>
+              <div class="row"></div>
+            </div>
+          </section>
 
-        <section>
-          <h2>Header</h2>
-          <div class="row"><label>Text</label><input id="hdrText" type="text" value="{MONTH} {YEAR}"></div>
-          <div class="grid2">
-            <div class="row"><label>Font</label>
-              <select id="hdrFontSel">
-                <option value="Inter, Arial">Inter</option>
-                <option value="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial">System UI</option>
-                <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
-                <option value="Arial, Helvetica, sans-serif">Arial</option>
-                <option value="Georgia, 'Times New Roman', serif">Georgia</option>
-                <option value="'Times New Roman', Times, serif">Times</option>
-                <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
-                <option value="__custom__">Custom…</option>
+          <section>
+            <h2>Day Number</h2>
+            <div class="grid2">
+              <div class="row"><label>Font</label>
+                <select id="dayFontSel">
+                  <option value="Inter, Arial">Inter</option>
+                  <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
+                  <option value="Arial, Helvetica, sans-serif">Arial</option>
+                  <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+                  <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+              </div>
+              <div class="row"><label>Size (pt)</label><input id="daySizePt" type="number" value="9" step=".5"></div>
+            </div>
+            <div class="row hidden" id="dayFontCustomRow"><label>Custom font CSS</label><input id="dayFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
+            <div class="grid2">
+              <div class="row"><label>Offset X (mm)</label><input id="dayOffX" type="number" value="-1.5" step=".2"></div>
+              <div class="row"><label>Offset Y (mm)</label><input id="dayOffY" type="number" value="1.5" step=".2"></div>
+            </div>
+            <div class="row"><label>Anchor</label>
+              <select id="dayAnchor">
+                <option value="top-right">Top-Right</option>
+                <option value="top-left">Top-Left</option>
+                <option value="center">Center</option>
+                <option value="bottom-right">Bottom-Right</option>
               </select>
             </div>
-            <div class="row"><label>Size (pt)</label><input id="hdrSize" type="number" value="18" step=".5"></div>
-          </div>
-          <div class="row hidden" id="hdrFontCustomRow"><label>Custom font CSS</label><input id="hdrFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
-          <div class="grid2">
-            <div class="row"><label>Align</label>
-              <select id="hdrAlign"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          </section>
+
+          <section>
+            <h2>Day Names</h2>
+            <div class="grid2">
+              <div class="row"><label>Font</label>
+                <select id="wdFontSel">
+                  <option value="Inter, Arial">Inter</option>
+                  <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
+                  <option value="Arial, Helvetica, sans-serif">Arial</option>
+                  <option value="Georgia, 'Times New Roman', serif">Georgia</option>
+                  <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+              </div>
+              <div class="row"><label>Size (pt)</label><input id="wdSizePt" type="number" value="8" step=".5"></div>
             </div>
-            <div class="row"><label>Margin B (mm)</label><input id="hdrGap" type="number" value="6" step=".5"></div>
-          </div>
-        </section>
-
-        <section>
-          <h2>Grid & Cells</h2>
-          <div class="grid2">
-            <div class="row"><label>Stroke (pt)</label><input id="cellStrokePt" type="number" value="0.6" step=".1"></div>
-            <div class="row"><label>Radius (mm)</label><input id="cellRadius" type="number" value="2" step=".2"></div>
-          </div>
-          <div class="grid2">
-            <div class="row"><label>Gutter X (mm)</label><input id="gutX" type="number" value="2" step=".2"></div>
-            <div class="row"><label>Gutter Y (mm)</label><input id="gutY" type="number" value="2" step=".2"></div>
-          </div>
-          <div class="grid2">
-            <div class="row"><label>Table lines</label><input id="tableLines" type="checkbox"></div>
-            <div class="row"><label>Hide empty cells</label><input id="hideEmpty" type="checkbox"></div>
-          </div>
-          <div class="grid2">
-            <div class="row"><label>Prev/next numbers</label><input id="showAdj" type="checkbox"></div>
-            <div class="row"><label>Adj shade %</label><input id="adjAlpha" type="number" value="55" min="10" max="90" step="5"></div>
-          </div>
-          <div class="grid2">
-            <div class="row"><label>Table stroke (pt)</label><input id="tableStrokePt" type="number" value="0.8" step=".1"></div>
-            <div class="row"></div>
-          </div>
-        </section>
-
-        <section>
-          <h2>Day Number</h2>
-          <div class="grid2">
-            <div class="row"><label>Font</label>
-              <select id="dayFontSel">
-                <option value="Inter, Arial">Inter</option>
-                <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
-                <option value="Arial, Helvetica, sans-serif">Arial</option>
-                <option value="Georgia, 'Times New Roman', serif">Georgia</option>
-                <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
-                <option value="__custom__">Custom…</option>
-              </select>
+            <div class="row hidden" id="wdFontCustomRow"><label>Custom font CSS</label><input id="wdFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
+            <div class="grid2">
+              <div class="row"><label>Offset X (mm)</label><input id="wdOffX" type="number" value="0" step=".2"></div>
+              <div class="row"><label>Offset Y (mm)</label><input id="wdOffY" type="number" value="-2" step=".2"></div>
             </div>
-            <div class="row"><label>Size (pt)</label><input id="daySizePt" type="number" value="9" step=".5"></div>
-          </div>
-          <div class="row hidden" id="dayFontCustomRow"><label>Custom font CSS</label><input id="dayFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
-          <div class="grid2">
-            <div class="row"><label>Offset X (mm)</label><input id="dayOffX" type="number" value="-1.5" step=".2"></div>
-            <div class="row"><label>Offset Y (mm)</label><input id="dayOffY" type="number" value="1.5" step=".2"></div>
-          </div>
-          <div class="row"><label>Anchor</label>
-            <select id="dayAnchor">
-              <option value="top-right">Top-Right</option>
-              <option value="top-left">Top-Left</option>
-              <option value="center">Center</option>
-              <option value="bottom-right">Bottom-Right</option>
-            </select>
-          </div>
-        </section>
+          </section>
 
-        <section>
-          <h2>Day Names</h2>
-          <div class="grid2">
-            <div class="row"><label>Font</label>
-              <select id="wdFontSel">
-                <option value="Inter, Arial">Inter</option>
-                <option value="Noto Sans JP, Inter, Arial">Noto Sans JP</option>
-                <option value="Arial, Helvetica, sans-serif">Arial</option>
-                <option value="Georgia, 'Times New Roman', serif">Georgia</option>
-                <option value="'Roboto Mono', Menlo, Consolas, monospace">Roboto Mono</option>
-                <option value="__custom__">Custom…</option>
-              </select>
-            </div>
-            <div class="row"><label>Size (pt)</label><input id="wdSizePt" type="number" value="8" step=".5"></div>
+          <div class="btns">
+            <button id="generate">Generate All (preview & ZIP)</button>
           </div>
-          <div class="row hidden" id="wdFontCustomRow"><label>Custom font CSS</label><input id="wdFontCustom" type="text" placeholder="e.g. 'MyFont, Arial'"></div>
-          <div class="grid2">
-            <div class="row"><label>Offset X (mm)</label><input id="wdOffX" type="number" value="0" step=".2"></div>
-            <div class="row"><label>Offset Y (mm)</label><input id="wdOffY" type="number" value="-2" step=".2"></div>
-          </div>
-        </section>
-
-        <div class="btns">
-          <button id="generate">Generate All (preview & ZIP)</button>
         </div>
-      </div>
 
-      <!-- resize handles -->
-      <div class="win-handle handle-nw" data-role="nw"></div>
-      <div class="win-handle handle-n"  data-role="n"></div>
-      <div class="win-handle handle-ne" data-role="ne"></div>
-      <div class="win-handle handle-w"  data-role="w"></div>
-      <div class="win-handle handle-e"  data-role="e"></div>
-      <div class="win-handle handle-sw" data-role="sw"></div>
-      <div class="win-handle handle-s"  data-role="s"></div>
-      <div class="win-handle handle-se" data-role="se"></div>
+        <!-- resize handles -->
+        <div class="win-handle handle-nw" data-role="nw"></div>
+        <div class="win-handle handle-n"  data-role="n"></div>
+        <div class="win-handle handle-ne" data-role="ne"></div>
+        <div class="win-handle handle-w"  data-role="w"></div>
+        <div class="win-handle handle-e"  data-role="e"></div>
+        <div class="win-handle handle-sw" data-role="sw"></div>
+        <div class="win-handle handle-s"  data-role="s"></div>
+        <div class="win-handle handle-se" data-role="se"></div>
+      </div>
     </div>
   </div>
 
-  <script defer src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

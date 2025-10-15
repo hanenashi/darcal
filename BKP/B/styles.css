@@ -1,4 +1,3 @@
-
 :root{
   --bg:#0f1115; --fg:#e8e8e8; --muted:#a6a6a6; --panel:#13161c; --line:#262a33;
   --accent:#5aa9ff; --guide:#78d1ff; --hud:#ffe16b; --magenta:#ff2bbf;
@@ -8,7 +7,9 @@
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 
 /* Preview */
-.preview{ position:fixed; inset:0; background:#0c0e12; overflow:hidden; touch-action:none; }
+.preview{
+  position:fixed; inset:0; background:#0c0e12; overflow:hidden; touch-action:none;
+}
 #stage{ position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
 svg [data-role]{ touch-action:none }
 .guide{stroke:var(--guide);stroke-width:1.5;stroke-dasharray:6 4;fill:none}
@@ -17,48 +18,43 @@ svg [data-role]{ touch-action:none }
 
 /* Rulers */
 .ruler{position:absolute; z-index:6; pointer-events:none;}
-.ruler-top{left:28px; top:0; height:28px;}
-.ruler-left{left:0; top:28px; width:28px}
-.ruler-corner{position:absolute; left:0; top:0; width:28px; height:28px; background:#0a0c10; z-index:7; border-right:1px solid #343a46; border-bottom:1px solid #343a46}
+.ruler-top{left:0; top:0; height:28px;}
+.ruler-left{left:0; top:0; width:28px}
 
-/* Settings: morphing wrap */
-.settings-wrap{ position:fixed; inset:0; pointer-events:none; z-index:30; }
+/* Draggable Settings button */
 .settings-btn{
-  position:fixed; right:16px; bottom:16px;
+  position:fixed; z-index:30;
+  right:16px; bottom:16px;
   padding:.5rem .85rem; border-radius:.65rem;
-  font-size:15px; font-weight:600; background:#1f2a44; color:#fff;
-  border:1px solid #2f416a; box-shadow:0 6px 18px rgba(0,0,0,.35);
-  touch-action:none; user-select:none; pointer-events:auto;
-  transform-origin: center center;
-  transition: opacity .18s ease;
+  font-size:15px; font-weight:600;
+  background:#1f2a44; color:#fff; border:1px solid #2f416a;
+  box-shadow:0 6px 18px rgba(0,0,0,.35);
+  touch-action:none; user-select:none;
 }
-.settings-btn.dragging{ right:auto; bottom:auto; }
+.settings-btn.dragging{ right:auto; bottom:auto; } /* avoid weird stretch while dragging */
 
-/* The panel itself */
-.sheet{ position:fixed; inset:0; display:block; pointer-events:none; }
+/* Floating window */
+.sheet{ position:fixed; inset:0; pointer-events:none; }
+.sheet[aria-hidden="true"] .sheet-card{ display:none; }
 .sheet-card{
   position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
   width: min(560px, 92vw); height: min(640px, 88vh);
   min-width: 320px; min-height: 320px;
   background:rgba(19,22,28,.96); border:1px solid var(--line);
   display:flex; flex-direction:column; border-radius:12px; overflow:hidden;
-  font-size:13px; box-shadow:0 12px 40px rgba(0,0,0,.55);
-  pointer-events:auto; opacity:0;
-  will-change:transform, opacity;
-  transition: transform .22s cubic-bezier(.2,.7,.2,1), opacity .22s ease;
+  font-size:13px; box-shadow:0 12px 40px rgba(0,0,0,.55); pointer-events:auto;
 }
-.sheet[aria-hidden="true"] .sheet-card{ pointer-events:none; }
-
-/* header: drag on title area; buttons clickable */
-.sheet-header{ display:flex;justify-content:space-between;align-items:center;
-  padding:8px 10px; border-bottom:1px solid var(--line); user-select:none;}
+/* header: dragging only on title area; buttons stay clickable */
+.sheet-header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 10px; border-bottom:1px solid var(--line); user-select:none;
+}
 .sheet-header h1{font-size:15px;margin:0; cursor:move;}
-.sheet-actions{display:flex; gap:6px; align-items:center}
-.chk-inline{ display:inline-flex; gap:6px; align-items:center; font-size:12px; color:var(--muted); }
+.sheet-actions{display:flex; gap:6px}
 .icon-btn{background:#172133;color:var(--fg);border:1px solid #2a3652;border-radius:.5rem;padding:.3rem .55rem}
 .sheet-body{ padding:8px 10px; overflow:auto; overscroll-behavior:contain; }
 
-/* controls */
+/* compact controls */
 h2{ font-size:12px; color:var(--muted); margin:10px 0 6px; text-transform:uppercase; letter-spacing:.06em }
 .row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
 label{min-width:96px;color:var(--muted);font-size:11px}
@@ -77,10 +73,15 @@ button:active{transform:translateY(1px)}
 .hidden{display:none}
 
 /* section separators */
-.sheet-body section + section{ border-top:1px dashed #2a2f39; padding-top:10px; margin-top:8px; }
+.sheet-body section + section{
+  border-top:1px dashed #2a2f39; padding-top:10px; margin-top:8px;
+}
 
 /* window resize handles */
-.win-handle{ position:absolute; width:14px; height:14px; background:transparent; z-index:2; touch-action:none; }
+.win-handle{
+  position:absolute; width:14px; height:14px; background:transparent;
+  z-index:2; touch-action:none;
+}
 .handle-nw{left:-3px; top:-3px; cursor:nwse-resize}
 .handle-ne{right:-3px; top:-3px; cursor:nesw-resize}
 .handle-sw{left:-3px; bottom:-3px; cursor:nesw-resize}
