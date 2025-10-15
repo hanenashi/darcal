@@ -30,11 +30,11 @@ const state={
   tableStrokePt:0.8,
   dayFont:"Inter, Arial", daySizePt:9, dayOffX:-1.5, dayOffY:1.5, dayAnchor:"top-right",
   wdFont:"Inter, Arial", wdSizePt:8, wdOffX:0, wdOffY:-2,
-  view:{scale:1, tx:12, ty:12, min:0.3, max:4},
-  win:{x:null,y:null,w:null,h:null}
+  view:{scale:1, tx:12, ty:12, min:0.3, max:4, userMoved:false, centered:false},
+  rulersOn:false
 };
 
-let previewHost, stage, hud;
+let previewHost, stage, hud, rulerTop, rulerLeft;
 
 /* ===== safe binding helpers ===== */
 function bindNum(id,key){ const e=$(id); if(!e) return;
@@ -57,6 +57,7 @@ function bindChk(id,key){ const e=$(id); if(!e) return;
 /* ===== UI init ===== */
 function init(){
   previewHost=$("preview"); hud=$("hud");
+  rulerTop=$("rulerTop"); rulerLeft=$("rulerLeft");
 
   stage=document.createElement("div");
   stage.id="stage";
@@ -115,16 +116,30 @@ function init(){
   setupSettingsWindow();
   setupSettingsButtonDrag();
 
-  // Back-compat shim for old FAB (safe no-op if missing)
+  // Back-compat for old FAB (safe no-op if missing)
   setupFabShim();
 
   // Hotkeys and pan/zoom
   setupHotkeys();
   wirePanZoom();
 
+  // Close popup when clicking outside
+  document.addEventListener("pointerdown",(e)=>{
+    const sheet=$("sheet"); const win=document.querySelector(".sheet-card");
+    if(sheet.getAttribute("aria-hidden")==="false"){
+      const inside = win.contains(e.target) || e.target===$("settingsBtn");
+      if(!inside) sheet.setAttribute("aria-hidden","true");
+    }
+  });
+
+  // Center on first paint and when resizing (if user hasn’t moved)
+  window.addEventListener("resize", ()=>{ if(!state.view.userMoved){ centerView(); } drawRulers(); });
+
   render();
+  centerView(); // initial center
 }
 
+/* ===== helpers ===== */
 function setupFontPicker(selectId,rowId,inputId,stateKey){
   const sel=$(selectId), row=$(rowId), inp=$(inputId);
   if(!sel) return;
@@ -143,7 +158,6 @@ function setupFontPicker(selectId,rowId,inputId,stateKey){
   if(sel.value!=="__custom__") row.classList.add("hidden");
 }
 
-/* ===== weekday helper ===== */
 function weekdayRow(){
   const base=weekdaysByLang(state.lang,state.fullNames);
   if(state.firstDay===0) return base;
@@ -158,10 +172,38 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   svg.setAttribute("width",state.pageW+"mm"); svg.setAttribute("height",state.pageH+"mm");
   svg.setAttribute("viewBox",`0 0 ${mm(state.pageW)} ${mm(state.pageH)}`);
 
+  // Page background
   const page=document.createElementNS(svgns,"rect");
   page.setAttribute("x",0); page.setAttribute("y",0);
   page.setAttribute("width",mm(state.pageW)); page.setAttribute("height",mm(state.pageH));
   page.setAttribute("fill","#fff"); svg.appendChild(page);
+
+  // Ruler-guides (centers + thirds) — preview only
+  if(state.rulersOn && !exportMode){
+    const gGuide=document.createElementNS(svgns,"g");
+    gGuide.setAttribute("stroke", "#ff2bbf");
+    gGuide.setAttribute("stroke-width", 1);
+    // centers (solid)
+    [[mm(state.pageW)/2, 0, mm(state.pageW)/2, mm(state.pageH)],
+     [0, mm(state.pageH)/2, mm(state.pageW), mm(state.pageH)/2]]
+     .forEach(([x1,y1,x2,y2])=>{
+       const ln=document.createElementNS(svgns,"line");
+       ln.setAttribute("x1",x1); ln.setAttribute("y1",y1); ln.setAttribute("x2",x2); ln.setAttribute("y2",y2);
+       gGuide.appendChild(ln);
+     });
+    // thirds (dashed)
+    const thirds=[[mm(state.pageW)/3,0,mm(state.pageW)/3,mm(state.pageH)],
+                  [2*mm(state.pageW)/3,0,2*mm(state.pageW)/3,mm(state.pageH)],
+                  [0,mm(state.pageH)/3,mm(state.pageW),mm(state.pageH)/3],
+                  [0,2*mm(state.pageH)/3,mm(state.pageW),2*mm(state.pageH)/3]];
+    thirds.forEach(([x1,y1,x2,y2])=>{
+      const ln=document.createElementNS(svgns,"line");
+      ln.setAttribute("x1",x1); ln.setAttribute("y1",y1); ln.setAttribute("x2",x2); ln.setAttribute("y2",y2);
+      ln.setAttribute("stroke-dasharray","6 6");
+      gGuide.appendChild(ln);
+    });
+    svg.appendChild(gGuide);
+  }
 
   const g=document.createElementNS(svgns,"g");
   g.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
@@ -208,7 +250,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
   /* Table vs Card modes */
   if(state.tableLines){
     const strokeW = ptToPx(state.tableStrokePt || state.cellStrokePt);
-
     if(state.hideEmpty && !state.showAdj){
       // draw only active days as stroked cells (no fill)
       for(let r=0;r<rows;r++){
@@ -218,7 +259,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
           const afterEnd = (idx>=startOff+days);
           const active = !(inLead || afterEnd);
           if(!active) continue;
-
           const rect=document.createElementNS(svgns,"rect");
           rect.setAttribute("x",x); rect.setAttribute("y",y);
           rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
@@ -268,7 +308,6 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
         }
       }
 
-      // non-table mode draws rounded tiles; table mode may already have strokes
       if(!state.tableLines){
         if(!state.hideEmpty || active || state.showAdj){
           const rect=document.createElementNS(svgns,"rect");
@@ -298,35 +337,49 @@ function buildMonthSVG(y,mIdx,{exportMode=false}={}){
     }
   }
 
-  // interactive overlay
+  // interactive overlay (preview only)
   if(state.showGuides && !exportMode){
     const ov=document.createElementNS(svgns,"g");
     ov.setAttribute("transform",`translate(${mm(state.calX)}, ${mm(state.calY)})`);
 
+    // big move hitbox
     const hit=document.createElementNS(svgns,"rect");
     hit.setAttribute("x",-mm(4)); hit.setAttribute("y",-mm(4));
     hit.setAttribute("width",mm(state.calW)+mm(8)); hit.setAttribute("height",mm(state.calH)+mm(8));
     hit.setAttribute("fill","rgba(0,0,0,0)"); hit.style.cursor="move"; hit.dataset.role="move";
     ov.appendChild(hit);
 
+    // visible guide
     const guide=document.createElementNS(svgns,"rect");
     guide.setAttribute("x",0); guide.setAttribute("y",0);
     guide.setAttribute("width",mm(state.calW)); guide.setAttribute("height",mm(state.calH));
     guide.setAttribute("class","guide"); guide.dataset.role="move"; guide.style.cursor="move";
     ov.appendChild(guide);
 
+    // handles (visible)
     const size=mm(4.5);
-    [["nw",0,0],["n",mm(state.calW)/2,0],["ne",mm(state.calW),0],
-     ["w",0,mm(state.calH)/2],["e",mm(state.calW),mm(state.calH)/2],
-     ["sw",0,mm(state.calH)],["s",mm(state.calW)/2,mm(state.calH)],["se",mm(state.calW),mm(state.calH)]
-    ].forEach(([name,x,y])=>{
+    const pos=[["nw",0,0],["n",mm(state.calW)/2,0],["ne",mm(state.calW),0],
+               ["w",0,mm(state.calH)/2],["e",mm(state.calW),mm(state.calH)/2],
+               ["sw",0,mm(state.calH)],["s",mm(state.calW)/2,mm(state.calH)],["se",mm(state.calW),mm(state.calH)]];
+    pos.forEach(([name,x,y])=>{
       const h=document.createElementNS(svgns,"rect");
       h.setAttribute("x",x-size/2); h.setAttribute("y",y-size/2);
       h.setAttribute("width",size); h.setAttribute("height",size); h.setAttribute("rx",mm(0.8));
       h.setAttribute("class","handle"); h.dataset.role=name;
       h.style.cursor=({"nw":"nwse-resize","se":"nwse-resize","ne":"nesw-resize","sw":"nesw-resize","n":"ns-resize","s":"ns-resize","w":"ew-resize","e":"ew-resize"})[name];
       ov.appendChild(h);
+
+      // invisible FAT hit area for touch (~12mm)
+      const fat=document.createElementNS(svgns,"rect");
+      const pad=mm(6);
+      fat.setAttribute("x",x-pad); fat.setAttribute("y",y-pad);
+      fat.setAttribute("width",pad*2); fat.setAttribute("height",pad*2);
+      fat.setAttribute("fill","rgba(0,0,0,0)");
+      fat.dataset.role=name;
+      fat.style.cursor=h.style.cursor;
+      ov.appendChild(fat);
     });
+
     svg.appendChild(ov);
     wireDrag(svg,ov);
   }
@@ -342,8 +395,22 @@ function render(){
   stage.appendChild(svg);
   applyView();
   syncControlValuesIfOpen();
+  drawRulers();
 }
 
+/* ===== center view (on first load / reset) ===== */
+function centerView(){
+  const svg = stage.querySelector("svg"); if(!svg) return;
+  const rect=svg.getBoundingClientRect();
+  const host=previewHost.getBoundingClientRect();
+  const sc=state.view.scale;
+  state.view.tx = (host.width  - rect.width * sc)/2;
+  state.view.ty = (host.height - rect.height* sc)/2;
+  applyView();
+  state.view.centered=true;
+}
+
+/* ===== mirror inputs when open ===== */
 function syncControlValuesIfOpen(){
   const sheet=$("sheet");
   if (sheet && sheet.getAttribute("aria-hidden")==="false"){
@@ -357,6 +424,7 @@ function syncControlValuesIfOpen(){
 }
 
 /* ===== drag calendar block ===== */
+let blockManipulating=false;
 function wireDrag(svg,ov){
   let active=null;
   const onDown=e=>{
@@ -364,6 +432,7 @@ function wireDrag(svg,ov){
     e.preventDefault();
     if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
     active={role,mx:e.clientX,my:e.clientY,start:{x:state.calX,y:state.calY,w:state.calW,h:state.calH}};
+    blockManipulating=true;
     hud.style.display="block";
   };
   const onMove=e=>{
@@ -402,7 +471,7 @@ function wireDrag(svg,ov){
 
     syncControlValuesIfOpen();
   };
-  const end=()=>{active=null;hud.style.display="none";render()};
+  const end=()=>{active=null;blockManipulating=false;hud.style.display="none";render()};
   ov.addEventListener("pointerdown",onDown, {passive:false});
   svg.addEventListener("pointermove",onMove, {passive:false});
   svg.addEventListener("pointerup",end, {passive:true});
@@ -416,14 +485,16 @@ function wirePanZoom(){
   previewHost.addEventListener("wheel",(e)=>{
     if(e.ctrlKey) return;
     e.preventDefault();
+    state.view.userMoved=true;
     const rect=previewHost.getBoundingClientRect();
     const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
     zoomAtPoint(e.deltaY < 0 ? 1.1 : 1/1.1, cx, cy);
   }, {passive:false});
 
   previewHost.addEventListener("pointerdown",(e)=>{
-    if(e.target.closest('svg [data-role]')) return;
-    isPanning=true;
+    if(blockManipulating) return;
+    if(e.target.closest('svg [data-role]')) return; // don't pan on handles
+    isPanning=true; state.view.userMoved=true;
     panStart={x:e.clientX, y:e.clientY, tx:state.view.tx, ty:state.view.ty};
     previewHost.setPointerCapture && previewHost.setPointerCapture(e.pointerId);
   });
@@ -432,22 +503,24 @@ function wirePanZoom(){
     const dx=e.clientX - panStart.x, dy=e.clientY - panStart.y;
     state.view.tx = panStart.tx + dx;
     state.view.ty = panStart.ty + dy;
-    applyView();
+    applyView(); drawRulers();
   });
   const endPan=()=>{ isPanning=false; };
   previewHost.addEventListener("pointerup", endPan, {passive:true});
   previewHost.addEventListener("pointercancel", endPan, {passive:true});
 
-  // touch pinch + drag
+  // touch pinch + drag (but not while manipulating the block)
   let touches=new Map();
   previewHost.addEventListener("touchmove",(e)=>{
+    if(blockManipulating) return;
     if(e.touches.length===1){
       const t=e.touches[0];
       const prev=touches.get(t.identifier)||{x:t.clientX,y:t.clientY};
       state.view.tx += (t.clientX - prev.x);
       state.view.ty += (t.clientY - prev.y);
       touches.set(t.identifier,{x:t.clientX,y:t.clientY});
-      applyView();
+      state.view.userMoved=true;
+      applyView(); drawRulers();
     }else if(e.touches.length===2){
       e.preventDefault();
       const [a,b]=e.touches;
@@ -461,6 +534,7 @@ function wirePanZoom(){
       zoomAtPoint(newDist/prevDist, midX, midY);
       touches.set(a.identifier,{x:a.clientX,y:a.clientY});
       touches.set(b.identifier,{x:b.clientX,y:b.clientY});
+      state.view.userMoved=true;
     }
   }, {passive:false});
   previewHost.addEventListener("touchend",(e)=>{ for(const t of e.changedTouches) touches.delete(t.identifier); }, {passive:true});
@@ -474,13 +548,15 @@ function applyView(){
   const {scale,tx,ty}=state.view;
   stage.style.transform=`translate(${tx}px, ${ty}px) scale(${scale})`;
 }
+
+/* Zoom centered at screen point */
 function zoomAtPoint(factor, cx, cy){
   const before = screenToWorld(cx, cy);
   state.view.scale = clamp(state.view.scale * factor, state.view.min, state.view.max);
   const after = screenToWorld(cx, cy);
   state.view.tx += (before.x - after.x) * state.view.scale;
   state.view.ty += (before.y - after.y) * state.view.scale;
-  applyView();
+  applyView(); drawRulers();
 }
 
 /* ===== preview + ZIP ===== */
@@ -533,14 +609,13 @@ function setupSettingsWindow(){
     }
   }catch{}
 
-  // open/close
   function openSheet(){ sheet.setAttribute("aria-hidden","false"); syncControlValuesIfOpen(); }
   function closeSheet(){ sheet.setAttribute("aria-hidden","true"); }
 
   btn && btn.addEventListener("click", openSheet);
   closeBtn && closeBtn.addEventListener("click", closeSheet);
 
-  // header drag (but don't start drag when clicking actions/buttons)
+  // header drag (ignore clicks on buttons)
   if (dragHandle){
     let dragging=false, sx=0, sy=0, sl=0, st=0;
     dragHandle.addEventListener("pointerdown",(e)=>{
@@ -599,10 +674,9 @@ function setupSettingsWindow(){
     localStorage.setItem("settings-win", JSON.stringify({x:r.left,y:r.top,w:r.width,h:r.height}));
   }
 
-  // reset view
+  // reset view → recenter
   reset && reset.addEventListener("click", ()=>{
-    state.view={...state.view, scale:1, tx:12, ty:12};
-    applyView();
+    state.view.scale=1; state.view.userMoved=false; centerView();
   });
 }
 
@@ -614,15 +688,17 @@ function setupSettingsButtonDrag(){
   // restore pos
   try{
     const s = JSON.parse(localStorage.getItem("settings-btn-pos")||"{}");
-    if (s && s.l!=null && s.t!=null){ btn.style.left=s.l+"px"; btn.style.top=s.t+"px"; btn.style.right=""; btn.style.bottom=""; }
+    if (s && s.l!=null && s.t!=null){ btn.style.left=s.l+"px"; btn.style.top=s.t+"px"; btn.style.right="auto"; btn.style.bottom="auto"; }
   }catch{}
 
   let dragging=false, sx=0, sy=0, sl=0, st=0, moved=false;
   btn.addEventListener("pointerdown",(e)=>{
-    dragging=true; moved=false;
+    dragging=true; moved=false; btn.classList.add("dragging");
     const r=btn.getBoundingClientRect();
     sx=e.clientX; sy=e.clientY; sl=r.left; st=r.top;
     btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
+    // ensure we don't have conflicting anchors
+    btn.style.right="auto"; btn.style.bottom="auto";
   });
   window.addEventListener("pointermove",(e)=>{
     if(!dragging) return;
@@ -630,14 +706,13 @@ function setupSettingsButtonDrag(){
     if(Math.abs(dx)+Math.abs(dy)>3) moved=true;
     const nl=Math.max(8, Math.min(sl+dx, window.innerWidth - btn.offsetWidth - 8));
     const nt=Math.max(8, Math.min(st+dy, window.innerHeight - btn.offsetHeight - 8));
-    btn.style.left=nl+"px"; btn.style.top=nt+"px"; btn.style.right=""; btn.style.bottom="";
+    btn.style.left=nl+"px"; btn.style.top=nt+"px";
   }, {passive:false});
   window.addEventListener("pointerup",()=>{
     if(!dragging) return;
-    dragging=false;
+    dragging=false; btn.classList.remove("dragging");
     const r=btn.getBoundingClientRect();
     localStorage.setItem("settings-btn-pos", JSON.stringify({l:r.left, t:r.top}));
-    // treat as click only if not dragged
     if(!moved){
       const sheet=$("sheet");
       sheet && sheet.setAttribute("aria-hidden","false");
@@ -661,34 +736,131 @@ function setupFabShim(){
   });
 }
 
+/* ===== Rulers ===== */
+function drawRulers(){
+  const on = state.rulersOn;
+  rulerTop.style.display = on ? "block" : "none";
+  rulerLeft.style.display = on ? "block" : "none";
+  if(!on) return;
+
+  const W = previewHost.clientWidth;
+  const H = previewHost.clientHeight;
+  const topH = 28, leftW = 28;
+
+  // size canvases
+  rulerTop.width=W; rulerTop.height=topH;
+  rulerLeft.width=leftW; rulerLeft.height=H;
+
+  const ctxT = rulerTop.getContext("2d");
+  const ctxL = rulerLeft.getContext("2d");
+  const bg="#0a0c10", line="#343a46", tick="#6b7385", tickMajor="#c7ccda", text="#dfe3ee";
+
+  // clear & background
+  ctxT.fillStyle = bg; ctxT.fillRect(0,0,W,topH);
+  ctxL.fillStyle = bg; ctxL.fillRect(0,0,leftW,H);
+
+  const sc = state.view.scale;
+  const tx = state.view.tx, ty = state.view.ty;
+
+  // 1 mm in screen px at current scale
+  const pxPerMm = sc * PX_PER_MM;
+
+  // Top ruler ticks
+  ctxT.strokeStyle=line; ctxT.beginPath();
+  ctxT.moveTo(0,topH-0.5); ctxT.lineTo(W,topH-0.5); ctxT.stroke();
+
+  if(pxPerMm>0){
+    const worldLeft = (0 - tx)/sc;                // px in world
+    const worldRight = (W - tx)/sc;
+    let mmStart = Math.floor(worldLeft / PX_PER_MM);
+    const mmEnd = Math.ceil(worldRight / PX_PER_MM);
+
+    const minor = Math.max(6, Math.min(10, Math.round(pxPerMm*0.5))); // minor tick length
+    for(let mm=mmStart; mm<=mmEnd; mm++){
+      const xScreen = (mm*PX_PER_MM*sc) + tx;
+      const isMajor = (mm % 10 === 0);
+      const len = isMajor ? 18 : minor;
+      (isMajor? (ctxT.strokeStyle=tickMajor) : (ctxT.strokeStyle=tick));
+      ctxT.beginPath();
+      ctxT.moveTo(Math.round(xScreen)+0.5, topH);
+      ctxT.lineTo(Math.round(xScreen)+0.5, topH - len);
+      ctxT.stroke();
+
+      if(isMajor){
+        ctxT.fillStyle=text; ctxT.font="10px system-ui, Arial";
+        ctxT.textAlign="center"; ctxT.textBaseline="top";
+        ctxT.fillText(String(mm), Math.round(xScreen), 2);
+      }
+    }
+  }
+
+  // Left ruler ticks
+  ctxL.strokeStyle=line; ctxL.beginPath();
+  ctxL.moveTo(leftW-0.5,0); ctxL.lineTo(leftW-0.5,H); ctxL.stroke();
+
+  if(pxPerMm>0){
+    const worldTop = (0 - ty)/sc;
+    const worldBot = (H - ty)/sc;
+    let mmStartY = Math.floor(worldTop / PX_PER_MM);
+    const mmEndY = Math.ceil(worldBot / PX_PER_MM);
+
+    const minor = Math.max(6, Math.min(10, Math.round(pxPerMm*0.5)));
+    for(let mm=mmStartY; mm<=mmEndY; mm++){
+      const yScreen = (mm*PX_PER_MM*sc) + ty;
+      const isMajor = (mm % 10 === 0);
+      const len = isMajor ? 18 : minor;
+      (isMajor? (ctxL.strokeStyle=tickMajor) : (ctxL.strokeStyle=tick));
+      ctxL.beginPath();
+      ctxL.moveTo(leftW, Math.round(yScreen)+0.5);
+      ctxL.lineTo(leftW - len, Math.round(yScreen)+0.5);
+      ctxL.stroke();
+
+      if(isMajor){
+        ctxL.save();
+        ctxL.translate(2, Math.round(yScreen)+2);
+        ctxL.rotate(-Math.PI/2);
+        ctxL.fillStyle=text; ctxL.font="10px system-ui, Arial";
+        ctxL.textAlign="center"; ctxL.textBaseline="top";
+        ctxL.fillText(String(mm), 0, 0);
+        ctxL.restore();
+      }
+    }
+  }
+}
+
 /* ===== hotkeys ===== */
 function setupHotkeys(){
   document.addEventListener("keydown", (e)=>{
     const tag=(e.target && e.target.tagName)||"";
     const editable = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
+    if(editable) return;
 
-    if(!editable && (e.key==='+' || e.key==='=')){
+    if(e.key==='+' || e.key==='='){
       e.preventDefault();
       const rect=previewHost.getBoundingClientRect();
       zoomAtPoint(1.1, rect.width/2, rect.height/2);
+      state.view.userMoved=true;
       return;
     }
-    if(!editable && (e.key==='-' || e.key==='_')){
+    if(e.key==='-' || e.key==='_'){
       e.preventDefault();
       const rect=previewHost.getBoundingClientRect();
       zoomAtPoint(1/1.1, rect.width/2, rect.height/2);
+      state.view.userMoved=true;
       return;
     }
-
-    if(editable) return;
     if(e.key==='o' || e.key==='O'){
       e.preventDefault();
       const sheet=$("sheet");
       sheet.setAttribute("aria-hidden", sheet.getAttribute("aria-hidden")==="true" ? "false" : "true");
       if(sheet.getAttribute("aria-hidden")==="false") syncControlValuesIfOpen();
+      return;
     }
     if(e.key==='Escape'){
-      const sheet=$("sheet"); sheet.setAttribute("aria-hidden","true");
+      const sheet=$("sheet"); sheet.setAttribute("aria-hidden","true"); return;
+    }
+    if(e.key==='r' || e.key==='R'){
+      state.rulersOn = !state.rulersOn; drawRulers(); return;
     }
   });
 }

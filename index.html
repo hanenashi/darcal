@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Calendar Maker</title>
+  <title>Darcal — Calendar Maker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,13 +11,16 @@
 </head>
 <body>
   <div id="preview" class="preview">
+    <!-- ruler canvases (drawn dynamically) -->
+    <canvas id="rulerTop" class="ruler ruler-top" width="0" height="0"></canvas>
+    <canvas id="rulerLeft" class="ruler ruler-left" width="0" height="0"></canvas>
     <div id="hud" class="hud" style="display:none"></div>
   </div>
 
-  <!-- Draggable Settings button -->
+  <!-- Draggable Settings button (starts alone) -->
   <button id="settingsBtn" class="settings-btn" aria-label="Settings" title="Settings">Settings</button>
 
-  <!-- Floating, draggable, resizable settings window (starts CLOSED) -->
+  <!-- Floating settings window (starts CLOSED) -->
   <div id="sheet" class="sheet" aria-hidden="true">
     <div class="sheet-card" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
       <div class="sheet-header" id="sheetDragHandle">
