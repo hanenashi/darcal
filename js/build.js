@@ -4,7 +4,10 @@ function pad2(n){ return String(n).padStart(2,'0'); }
 
 function holidayNamesFor(y, m, d){
   const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
-  const H = (window.__HOL || state.holidays || {});   // prefer global mirror
+  const flat = (window.__HOL_FLAT || null);
+  if (flat && flat[key]) return flat[key].slice();
+
+  const H = (window.__HOL || state.holidays || {});   // fallback
   const R = (state.holidayRegion || "").toUpperCase();
 
   let regions = [];
@@ -19,7 +22,13 @@ function holidayNamesFor(y, m, d){
     if (H[reg] && H[reg][key]) out = out.concat(H[reg][key]);
   }
   if (H["__ALL__"] && H["__ALL__"][key]) out = out.concat(H["__ALL__"][key]);
-  if (Array.isArray(H[key])) out = out.concat(H[key]); // flat map support
+  if (Array.isArray(H[key])) out = out.concat(H[key]);
+
+  if (window.__HOL_DBG && out.length===0){
+    try{
+      console.debug("[darcal:MISS]", key, "region=", R, "have regions=", Object.keys(H));
+    }catch{}
+  }
   return out;
 }
 
@@ -173,13 +182,13 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
-      // Holidays overlay (front, visible, optional debug dots)
+      // Holidays overlay (front, visible, optional debug)
       if (state.holidayEnabled && active) {
         const names = holidayNamesFor(y, mIdx, dayNum);
 
         if (names.length) {
           const hx = x + mm(state.holidayOffX);
-          const hy = y + cellH + mm(state.holidayOffY); // negative raises above bottom
+          const hy = y + cellH + mm(state.holidayOffY);
 
           if (window.__HOL_DBG) {
             const dot = document.createElementNS(svgns, "circle");
@@ -212,7 +221,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     }
   }
 
-  // Guidelines (front) tied to rulers toggle
+  // Guidelines (front)
   if (state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");

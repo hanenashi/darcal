@@ -63,7 +63,11 @@ export function initSettings({onChange}){
   $("holidayEnabled").addEventListener("change", updateHolidayStatusInfo);
 
   bindTxt("holidayRegion","holidayRegion");
-  $("holidayRegion").addEventListener("input", ()=>{ onChangeCb(); updateHolidayStatusInfo(); });
+  $("holidayRegion").addEventListener("input", ()=>{
+    rebuildHolidayFlat();      // <— rebuild flat map when region changes
+    onChangeCb();
+    updateHolidayStatusInfo();
+  });
 
   setupFontPicker("holFontSel","holFontCustomRow","holFontCustom","holidayFont");
   bindNum("holSizePt","holidaySizePt");
@@ -111,6 +115,7 @@ export function initSettings({onChange}){
   $("generate")?.addEventListener("click",()=>openPreviewAndZip());
 
   // Initial status
+  rebuildHolidayFlat(); // make sure flat exists at load time
   updateHolidayStatusInfo();
 }
 
@@ -294,8 +299,8 @@ function tryApplyHolidayJSON(text, {source}={}){
     const data = JSON.parse(text);
     const norm = normalizeHolidayObject(data);
     setHolidayObject(norm, {autoEnable:true, source});
-    // mirror globally too, for safety during debugging
     try { window.__HOL = state.holidays; } catch {}
+    rebuildHolidayFlat();   // <— keep flat in sync
   }catch(e){
     setStatus("Invalid JSON: "+e.message, false);
   }
@@ -327,6 +332,9 @@ function setHolidayObject(obj, {autoEnable=false, source}={}){
   // Global mirror so the renderer always sees the same object
   try { window.__HOL = state.holidays; } catch {}
 
+  // Build flattened lookup for the current region
+  rebuildHolidayFlat();
+
   // Build datalist options from regions
   const list = $("holidayRegionsList");
   if(list){
@@ -350,6 +358,32 @@ function setHolidayObject(obj, {autoEnable=false, source}={}){
   onChangeCb();
   updateHolidayStatusInfo();
 }
+
+// Build a fast date→names map for the current region selection and mirror it globally.
+function rebuildHolidayFlat(){
+  const H = (window.__HOL || state.holidays || {});
+  const R = (state.holidayRegion || "ANY").toUpperCase();
+  const flat = {};
+  const addMap = (map)=>{
+    if(!map) return;
+    for(const k of Object.keys(map)){
+      const arr = map[k]; if(!Array.isArray(arr)) continue;
+      flat[k] ||= [];
+      flat[k].push(...arr);
+    }
+  };
+  if(!R || R==="ANY" || R==="*"){
+    for(const [reg,map] of Object.entries(H)){
+      if(reg==="__ALL__") continue;
+      addMap(map);
+    }
+  }else{
+    addMap(H[R]);
+  }
+  addMap(H["__ALL__"]);
+  try { window.__HOL_FLAT = flat; } catch {}
+}
+
 function countRegionTotal(obj, region){
   if(!obj) return 0;
   if(!region || region==="ANY" || region==="*"){
