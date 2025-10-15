@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Darcal Holiday Debugger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{--bg:#0f1115;--fg:#e8e8e8;--mut:#9aa0ab;--line:#2a2f39;--accent:#5aa9ff}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px}
+  h1{font-size:18px;margin:0 0 12px}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0}
+  label{min-width:120px;color:var(--mut);font-size:12px}
+  input[type="text"],input[type="date"],select,textarea,button{
+    background:#161a20;color:var(--fg);border:1px solid var(--line);border-radius:.45rem;
+    padding:.35rem .55rem; font-size:13px
+  }
+  textarea{width:100%; min-height:160px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+  button{cursor:pointer}
+  .status{margin-top:8px; color:#9ad07a; white-space:pre-wrap}
+  .error{color:#ff6b6b}
+  .pane{display:grid; grid-template-columns: 1fr 420px; gap:16px; align-items:start}
+  .card{border:1px solid var(--line); border-radius:.65rem; overflow:hidden; background:#12161d}
+  .card h2{margin:0; padding:8px 10px; font-size:13px; color:#cfd6e4; border-bottom:1px solid var(--line)}
+  .card .body{padding:10px}
+  #svgHost{display:flex; align-items:center; justify-content:center; padding:12px; background:#0b0d12; border:1px dashed #2a2f39; border-radius:.5rem}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Holiday JSON — minimal debug</h1>
+
+  <div class="pane">
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="body">
+        <div class="row">
+          <label>Region</label>
+          <input id="region" type="text" value="ANY" list="regionsList" style="width:120px">
+          <datalist id="regionsList"></datalist>
+        </div>
+        <div class="row">
+          <label>Date</label>
+          <input id="date" type="date" value="2025-12-25">
+          <button id="draw">Draw</button>
+        </div>
+        <div class="row">
+          <label>Load file</label>
+          <input id="file" type="file" accept=".json">
+          <button id="fetch">Fetch holidays.json</button>
+          <button id="apply">Apply JSON</button>
+        </div>
+        <div class="row" style="align-items:flex-start">
+          <label>JSON</label>
+          <textarea id="jsonArea" placeholder='{
+  "US": { "2025-12-25": ["Christmas Day"] },
+  "CZ": { "2025-12-24": ["Štědrý den"], "2025-12-25": ["1. svátek vánoční"], "2025-12-26": ["2. svátek vánoční"] }
+}'></textarea>
+        </div>
+        <div id="status" class="status mono"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>SVG Output</h2>
+      <div class="body">
+        <div id="svgHost">
+          <!-- SVG goes here -->
+        </div>
+        <div id="info" class="mono" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const PX_PER_MM = 96/25.4;
+  const mm = v => v*PX_PER_MM;
+
+  const state = {
+    holidays: {},
+  };
+
+  function setStatus(msg, ok=true){
+    const el = $("status");
+    el.textContent = msg;
+    el.className = ok ? "status mono" : "status mono error";
+  }
+
+  function normalizeHolidayObject(data){
+    if (Array.isArray(data)) {
+      const out={};
+      for(const it of data){
+        if(!it || !it.date || !it.name) continue;
+        const region=(it.region||"__ALL__").toUpperCase();
+        out[region] ||= {};
+        out[region][it.date] ||= [];
+        out[region][it.date].push(it.name);
+      }
+      return out;
+    }
+    if (typeof data==="object" && data){
+      const firstKey = Object.keys(data)[0] || "";
+      if (/^\d{4}-\d{2}-\d{2}$/.test(firstKey)) {
+        return { "__ALL__": data };
+      }
+      return data;
+    }
+    return {};
+  }
+
+  function setHolidayObject(obj){
+    state.holidays = obj || {};
+    const regions = Object.keys(state.holidays).filter(k=>k!=="__ALL__").sort();
+    const dl = $("regionsList"); dl.innerHTML = "";
+    const optAny = document.createElement("option"); optAny.value="ANY"; dl.appendChild(optAny);
+    for(const r of regions){ const o=document.createElement("option"); o.value=r; dl.appendChild(o); }
+    setStatus(`Loaded regions: ${regions.join(", ") || "(none)"}  •  total keys: ${
+      Object.values(state.holidays).reduce((n,m)=>n+Object.keys(m).length,0) + Object.keys(state.holidays["__ALL__"]||{}).length}`);
+    console.debug("[test] holidays object:", state.holidays);
+  }
+
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  function holidayNamesFor(H, region, dateKey){
+    const R = (region||"").toUpperCase();
+    let out = [];
+    if (!R || R==="ANY" || R==="*"){
+      for (const k of Object.keys(H)){
+        if (k==="__ALL__") continue;
+        const names = H[k]?.[dateKey];
+        if (Array.isArray(names)) out = out.concat(names);
+      }
+    } else {
+      const names = H[R]?.[dateKey];
+      if (Array.isArray(names)) out = out.concat(names);
+    }
+    const all = H["__ALL__"]?.[dateKey];
+    if (Array.isArray(all)) out = out.concat(all);
+    return out;
+  }
+
+  function drawCellWithNames(dateStr, region){
+    const host = $("svgHost"); host.innerHTML = "";
+    const NS = "http://www.w3.org/2000/svg";
+    const wmm=90, hmm=60;
+
+    const svg = document.createElementNS(NS,"svg");
+    svg.setAttribute("width", mm(wmm));
+    svg.setAttribute("height", mm(hmm));
+    svg.setAttribute("viewBox", `0 0 ${mm(wmm)} ${mm(hmm)}`);
+
+    const page = document.createElementNS(NS,"rect");
+    page.setAttribute("x",0); page.setAttribute("y",0);
+    page.setAttribute("width", mm(wmm)); page.setAttribute("height", mm(hmm));
+    page.setAttribute("fill","#fff"); page.setAttribute("stroke","#000");
+    svg.appendChild(page);
+
+    const names = holidayNamesFor(state.holidays, region, dateStr);
+    console.debug("[test] draw", {dateStr, region, names});
+    $("info").textContent = `date=${dateStr} region=${region}  →  names=${JSON.stringify(names)}`;
+
+    // Draw bottom-left label with white halo (like app)
+    if (names.length){
+      const text = document.createElementNS(NS,"text");
+      text.setAttribute("x", mm(3));
+      text.setAttribute("y", mm(hmm-3));
+      text.setAttribute("font-family", "Inter, Arial, sans-serif");
+      text.setAttribute("font-size", 12);
+      text.setAttribute("fill", "#c82020");
+      text.setAttribute("text-anchor", "start");
+      text.setAttribute("dominant-baseline", "ideographic");
+      text.setAttribute("paint-order", "stroke");
+      text.setAttribute("stroke", "#ffffff");
+      text.setAttribute("stroke-width", 0.6);
+      text.textContent = names.join(" • ");
+      svg.appendChild(text);
+
+      // anchor dot for reference
+      const dot=document.createElementNS(NS,"circle");
+      dot.setAttribute("cx", mm(3)); dot.setAttribute("cy", mm(hmm-3));
+      dot.setAttribute("r", 2.5); dot.setAttribute("fill", "#e91e63"); dot.setAttribute("stroke","#fff"); dot.setAttribute("stroke-width",0.7);
+      svg.appendChild(dot);
+    }
+
+    host.appendChild(svg);
+  }
+
+  // Wire UI
+  $("fetch").addEventListener("click", async ()=>{
+    try{
+      setStatus("Fetching holidays.json …");
+      const res = await fetch("holidays.json", {cache:"no-store"});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const data = await res.json();
+      $("jsonArea").value = JSON.stringify(data, null, 2);
+      setHolidayObject(normalizeHolidayObject(data));
+    }catch(e){
+      setStatus("Fetch failed: "+e.message, false);
+    }
+  });
+
+  $("file").addEventListener("change",(e)=>{
+    const f=e.target.files?.[0]; if(!f) return;
+    const fr=new FileReader();
+    fr.onload=()=>{ $("jsonArea").value = String(fr.result||""); };
+    fr.readAsText(f);
+  });
+
+  $("apply").addEventListener("click", ()=>{
+    try{
+      const data = JSON.parse($("jsonArea").value||"{}");
+      setHolidayObject(normalizeHolidayObject(data));
+    }catch(e){
+      setStatus("Invalid JSON: "+e.message, false);
+    }
+  });
+
+  $("draw").addEventListener("click", ()=>{
+    const dateStr = $("date").value || "2025-12-25";
+    const region = $("region").value || "ANY";
+    drawCellWithNames(dateStr, region);
+  });
+
+  // Defaults for quick test
+  $("jsonArea").value = JSON.stringify({
+    "US":{"2025-12-25":["Christmas Day"]},
+    "CZ":{"2025-12-24":["Štědrý den"],"2025-12-25":["1. svátek vánoční"],"2025-12-26":["2. svátek vánoční"]},
+    "JP":{"2025-01-01":["元日"]}
+  }, null, 2);
+  setHolidayObject(normalizeHolidayObject(JSON.parse($("jsonArea").value)));
+  $("date").value = "2025-12-25";
+  drawCellWithNames("2025-12-25","ANY");
+})();
+</script>
+</body>
+</html>

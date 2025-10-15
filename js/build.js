@@ -4,10 +4,9 @@ function pad2(n){ return String(n).padStart(2,'0'); }
 
 function holidayNamesFor(y, m, d){
   const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
-  const H = state.holidays || {};
+  const H = (window.__HOL || state.holidays || {});   // prefer global mirror
   const R = (state.holidayRegion || "").toUpperCase();
 
-  // ANY => merge all regions; specific region => just that; always include __ALL__ and flat keys
   let regions = [];
   if (!R || R === "ANY" || R === "*") {
     regions = Object.keys(H).filter(k => k !== "__ALL__");
@@ -174,17 +173,14 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
-      // -----------------------------
-      // Holidays overlay (front, super-visible, with optional debug dots)
-      // -----------------------------
+      // Holidays overlay (front, visible, optional debug dots)
       if (state.holidayEnabled && active) {
         const names = holidayNamesFor(y, mIdx, dayNum);
 
         if (names.length) {
           const hx = x + mm(state.holidayOffX);
-          const hy = y + cellH + mm(state.holidayOffY); // negative offset lifts above bottom
+          const hy = y + cellH + mm(state.holidayOffY); // negative raises above bottom
 
-          // debug anchor
           if (window.__HOL_DBG) {
             const dot = document.createElementNS(svgns, "circle");
             dot.setAttribute("cx", hx);
@@ -202,12 +198,9 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
           hol.setAttribute("fill", state.holidayColor || "#c82020");
           hol.setAttribute("text-anchor", "start");
           hol.setAttribute("dominant-baseline", "ideographic");
-
-          // keep visible over any background
           hol.setAttribute("paint-order", "stroke");
           hol.setAttribute("stroke", "#ffffff");
           hol.setAttribute("stroke-width", 0.6);
-
           hol.setAttribute("x", hx);
           hol.setAttribute("y", hy);
           hol.textContent = names.join(" • ");
@@ -244,7 +237,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     svg.appendChild(gGuide);
   }
 
-  // Log per-render count for debugging (suppressed in export)
+  // Debug count (not in export)
   try {
     if (!exportMode) {
       console.debug("[darcal] holiday labels drawn:", window.__holidayDrawnCount || 0,

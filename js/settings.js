@@ -292,7 +292,10 @@ function setStatus(msg, ok=true){
 function tryApplyHolidayJSON(text, {source}={}){
   try{
     const data = JSON.parse(text);
-    setHolidayObject(normalizeHolidayObject(data), {autoEnable:true, source});
+    const norm = normalizeHolidayObject(data);
+    setHolidayObject(norm, {autoEnable:true, source});
+    // mirror globally too, for safety during debugging
+    try { window.__HOL = state.holidays; } catch {}
   }catch(e){
     setStatus("Invalid JSON: "+e.message, false);
   }
@@ -320,6 +323,9 @@ function normalizeHolidayObject(data){
 }
 function setHolidayObject(obj, {autoEnable=false, source}={}){
   state.holidays = obj || {};
+
+  // Global mirror so the renderer always sees the same object
+  try { window.__HOL = state.holidays; } catch {}
 
   // Build datalist options from regions
   const list = $("holidayRegionsList");
