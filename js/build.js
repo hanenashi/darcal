@@ -195,9 +195,9 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
           hol.setAttribute("fill", state.holidayColor || "#c82020");
           hol.setAttribute("text-anchor", "start");
           hol.setAttribute("dominant-baseline", "ideographic");
-          hol.setAttribute("paint-order", "stroke");
-          hol.setAttribute("stroke", "#ffffff");
-          hol.setAttribute("stroke-width", 0.6);
+          // hol.setAttribute("paint-order", "stroke");
+          // hol.setAttribute("stroke", "#ffffff");
+          // hol.setAttribute("stroke-width", 0.6);
           hol.setAttribute("x", x + mm(state.holidayOffX));
           hol.setAttribute("y", cellY + cellH + mm(state.holidayOffY));
           hol.textContent = names.join(" • ");
