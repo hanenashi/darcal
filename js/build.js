@@ -2,33 +2,23 @@ import { state, mm, ptToPx, monthsByLang, weekdaysByLang, daysInMonth, firstWeek
 
 function pad2(n){ return String(n).padStart(2,'0'); }
 
+// Prefer a pre-flattened map (date -> [names]) if available; otherwise combine on the fly.
 function holidayNamesFor(y, m, d){
   const key = `${y}-${pad2(m+1)}-${pad2(d)}`;
   const flat = (window.__HOL_FLAT || null);
   if (flat && flat[key]) return flat[key].slice();
 
-  const H = (window.__HOL || state.holidays || {});   // fallback
+  const H = (window.__HOL || state.holidays || {});
   const R = (state.holidayRegion || "").toUpperCase();
 
   let regions = [];
-  if (!R || R === "ANY" || R === "*") {
-    regions = Object.keys(H).filter(k => k !== "__ALL__");
-  } else if (H[R]) {
-    regions = [R];
-  }
+  if (!R || R === "ANY" || R === "*") regions = Object.keys(H).filter(k => k !== "__ALL__");
+  else if (H[R]) regions = [R];
 
   let out = [];
-  for (const reg of regions) {
-    if (H[reg] && H[reg][key]) out = out.concat(H[reg][key]);
-  }
+  for (const reg of regions) if (H[reg] && H[reg][key]) out = out.concat(H[reg][key]);
   if (H["__ALL__"] && H["__ALL__"][key]) out = out.concat(H["__ALL__"][key]);
-  if (Array.isArray(H[key])) out = out.concat(H[key]);
-
-  if (window.__HOL_DBG && out.length===0){
-    try{
-      console.debug("[darcal:MISS]", key, "region=", R, "have regions=", Object.keys(H));
-    }catch{}
-  }
+  if (Array.isArray(H[key])) out = out.concat(H[key]); // flat map support
   return out;
 }
 
@@ -45,11 +35,13 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
   svg.setAttribute("width", state.pageW + "mm"); svg.setAttribute("height", state.pageH + "mm");
   svg.setAttribute("viewBox", `0 0 ${mm(state.pageW)} ${mm(state.pageH)}`);
 
+  // Page
   const page = document.createElementNS(svgns, "rect");
   page.setAttribute("x", 0); page.setAttribute("y", 0);
   page.setAttribute("width", mm(state.pageW)); page.setAttribute("height", mm(state.pageH));
   page.setAttribute("fill", "#fff"); svg.appendChild(page);
 
+  // Calendar group
   const g = document.createElementNS(svgns, "g");
   g.setAttribute("transform", `translate(${mm(state.calX)}, ${mm(state.calY)})`);
   svg.appendChild(g);
@@ -77,7 +69,7 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
   const cellW = (gridW - gutX * (cols - 1)) / cols;
   const cellH = (gridH - gutY * (rows - 1)) / rows;
 
-  // Weekday names
+  // Weekday names row
   const wdY = gridY0 + mm(state.wdOffY);
   weekdayRow().forEach((d,i)=>{
     const t = document.createElementNS(svgns, "text");
@@ -91,79 +83,94 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     t.textContent = d; g.appendChild(t);
   });
 
+  // Month math
   const startOff = firstWeekday(y, mIdx, state.firstDay);
   const days = daysInMonth(y, mIdx);
   const daysPrev = daysInMonth(y - (mIdx===0?1:0), (mIdx+11)%12);
   let n=1, trailing=1;
 
-  // Table lines / cell rectangles
+  // Grid outlines (table lines mode)
   if (state.tableLines){
     const strokeW = ptToPx(state.tableStrokePt || state.cellStrokePt);
+
     if (state.hideEmpty && !state.showAdj){
+      // draw only active day rectangles
       for(let r=0;r<rows;r++){
         for(let c=0;c<cols;c++){
           const idx=r*cols+c;
+          const inLead = idx<startOff;
+          const afterEnd = (idx>=startOff+days);
+          const active = !(inLead || afterEnd);
+          if(!active) continue;
           const x=c*(cellW+gutX);
           const cellY=gridY0 + r*(cellH+gutY);
-          const dayNum = idx-startOff+1;
-          let label=null,adj=false;
-          if(idx<startOff){
-            if(!state.showAdj) continue;
-            label=String(daysPrev-(startOff-idx-1)); adj=true;
-          }else if(dayNum>days){
-            if(!state.showAdj) continue;
-            label=String(trailing++); adj=true;
-          }else{
-            label=String(n++); adj=false;
-          }
           const rect=document.createElementNS(svgns,"rect");
           rect.setAttribute("x",x); rect.setAttribute("y",cellY);
           rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
-          rect.setAttribute("rx",mm(state.cellRadius)); rect.setAttribute("ry",mm(state.cellRadius));
           rect.setAttribute("fill","none");
-          rect.setAttribute("stroke",adj?`rgba(0,0,0,${Math.min(0.9,Math.max(0.1,state.adjAlpha/100))})`:"#000");
+          rect.setAttribute("stroke","#000");
           rect.setAttribute("stroke-width",strokeW);
           g.appendChild(rect);
         }
       }
-    }else{
-      for(let r=0;r<rows;r++){
-        for(let c=0;c<cols;c++){
-          const x=c*(cellW+gutX);
-          const cellY=gridY0 + r*(cellH+gutY);
-          const rect=document.createElementNS(svgns,"rect");
-          rect.setAttribute("x",x); rect.setAttribute("y",cellY);
-          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
-          rect.setAttribute("rx",mm(state.cellRadius)); rect.setAttribute("ry",mm(state.cellRadius));
-          rect.setAttribute("fill","none");
-          rect.setAttribute("stroke",`rgba(0,0,0,${Math.min(0.9,Math.max(0.1,state.adjAlpha/100))})`);
-          rect.setAttribute("stroke-width",strokeW);
-          g.appendChild(rect);
-        }
+    } else {
+      // full border + inner grid
+      const border=document.createElementNS(svgns,"rect");
+      border.setAttribute("x",0); border.setAttribute("y",gridY0);
+      border.setAttribute("width",gridW); border.setAttribute("height",gridH);
+      border.setAttribute("fill","none"); border.setAttribute("stroke","#000");
+      border.setAttribute("stroke-width",strokeW); g.appendChild(border);
+
+      for(let c=1;c<cols;c++){
+        const x=c*(cellW+gutX)-gutX/2;
+        const v=document.createElementNS(svgns,"line");
+        v.setAttribute("x1",x); v.setAttribute("y1",gridY0); v.setAttribute("x2",x); v.setAttribute("y2",gridY0+gridH);
+        v.setAttribute("stroke","#000"); v.setAttribute("stroke-width",strokeW); g.appendChild(v);
+      }
+      for(let r=1;r<rows;r++){
+        const yLine=gridY0+r*(cellH+gutY)-gutY/2;
+        const h=document.createElementNS(svgns,"line");
+        h.setAttribute("x1",0); h.setAttribute("y1",yLine); h.setAttribute("x2",gridW); h.setAttribute("y2",yLine);
+        h.setAttribute("stroke","#000"); h.setAttribute("stroke-width",strokeW); g.appendChild(h);
       }
     }
   }
 
-  // Day numbers
-  n=1; trailing=1;
+  // Cells + day numbers + holidays
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
       const idx=r*cols+c;
       const x=c*(cellW+gutX);
       const cellY=gridY0 + r*(cellH+gutY);
-      const dayNum=idx-startOff+1;
-      let label=null,adj=false,active=true;
-      if(idx<startOff){
-        if(!state.showAdj) continue;
-        label=String(daysPrev-(startOff-idx-1)); adj=true;
-      }else if(dayNum>days){
-        if(!state.showAdj) continue;
-        label=String(trailing++); adj=true;
-      }else{
-        label=String(n++); adj=false;
-      }
-      if(state.hideEmpty && !label) continue;
+      let active=false, label="", adj=false, dayNum=null;
 
+      if(idx<startOff){
+        if(!(state.hideEmpty&&!state.showAdj)){
+          if(state.showAdj){ label=String(daysPrev-(startOff-1-idx)); adj=true; }
+        }
+      } else if(n<=days){
+        active=true; dayNum=n; label=String(n++);
+      } else {
+        if(!(state.hideEmpty&&!state.showAdj)){
+          if(state.showAdj){ label=String(trailing++); adj=true; }
+        }
+      }
+
+      // Cell rectangles (non-table-lines mode)
+      if(!state.tableLines){
+        if(!state.hideEmpty || active || state.showAdj){
+          const rect=document.createElementNS(svgns,"rect");
+          rect.setAttribute("x",x); rect.setAttribute("y",cellY);
+          rect.setAttribute("width",cellW); rect.setAttribute("height",cellH);
+          rect.setAttribute("rx",mm(state.cellRadius));
+          rect.setAttribute("fill",active?"#fff":"#f6f6f6");
+          rect.setAttribute("stroke",state.cellStrokePt>0?"#000":"none");
+          rect.setAttribute("stroke-width",ptToPx(state.cellStrokePt));
+          g.appendChild(rect);
+        }
+      }
+
+      // Day numbers
       if(label){
         const dn=document.createElementNS(svgns,"text");
         dn.setAttribute("font-family",state.dayFont);
@@ -178,25 +185,10 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
         dn.setAttribute("x",ax); dn.setAttribute("y",ay); dn.textContent=label; g.appendChild(dn);
       }
 
-      // Holidays overlay (front, visible, optional debug)
+      // Holidays (front)
       if (state.holidayEnabled && active) {
         const names = holidayNamesFor(y, mIdx, dayNum);
-
         if (names.length) {
-          const hx = x + mm(state.holidayOffX);
-          const hy = cellY + cellH + mm(state.holidayOffY);
-
-          if (window.__HOL_DBG) {
-            const dot = document.createElementNS(svgns, "circle");
-            dot.setAttribute("cx", hx);
-            dot.setAttribute("cy", hy);
-            dot.setAttribute("r", 2.5);
-            dot.setAttribute("fill", "#e91e63");
-            dot.setAttribute("stroke", "#fff");
-            dot.setAttribute("stroke-width", 0.7);
-            g.appendChild(dot);
-          }
-
           const hol = document.createElementNS(svgns, "text");
           hol.setAttribute("font-family", state.holidayFont);
           hol.setAttribute("font-size", ptToPx(state.holidaySizePt));
@@ -206,18 +198,16 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
           hol.setAttribute("paint-order", "stroke");
           hol.setAttribute("stroke", "#ffffff");
           hol.setAttribute("stroke-width", 0.6);
-          hol.setAttribute("x", hx);
-          hol.setAttribute("y", hy);
+          hol.setAttribute("x", x + mm(state.holidayOffX));
+          hol.setAttribute("y", cellY + cellH + mm(state.holidayOffY));
           hol.textContent = names.join(" • ");
           g.appendChild(hol);
-
-          try { window.__holidayDrawnCount = (window.__holidayDrawnCount || 0) + 1; } catch {}
         }
       }
     }
   }
 
-  // Guidelines (front)
+  // Guidelines (front) tied to rulers toggle
   if (state.rulersOn && !exportMode){
     const gGuide=document.createElementNS(svgns,"g");
     gGuide.setAttribute("stroke", "#ff2bbf");
@@ -241,15 +231,6 @@ export function buildMonthSVG(y, mIdx, { exportMode = false } = {}){
     });
     svg.appendChild(gGuide);
   }
-
-  // Debug count (not in export)
-  try {
-    if (!exportMode) {
-      console.debug("[darcal] holiday labels drawn:", window.__holidayDrawnCount || 0,
-        "month=", mIdx+1, "year=", y, "region=", (state.holidayRegion||"ANY"));
-      window.__holidayDrawnCount = 0;
-    }
-  } catch {}
 
   return svg;
 }
