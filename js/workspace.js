@@ -129,7 +129,9 @@ function dispatchSync(keys) {
   } catch { }
 }
 
+/* -------------------- Pan/Zoom (mouse + touch) -------------------- */
 function wirePanZoom() {
+  // Mouse / pen via pointer events
   let isPanning = false, panStart = null;
 
   previewHost.addEventListener("wheel", (e) => {
@@ -160,8 +162,70 @@ function wirePanZoom() {
   const endPan = () => { isPanning = false; };
   previewHost.addEventListener("pointerup", endPan, { passive: true });
   previewHost.addEventListener("pointercancel", endPan, { passive: true });
+
+  // Touch: explicit handlers so 2-finger pinch works alongside 1-finger pan
+  const touches = new Map();
+
+  const touchPoint = (t) => ({ x: t.clientX, y: t.clientY });
+
+  previewHost.addEventListener("touchstart", (e) => {
+    if (blockManipulating) return;
+    for (const t of e.changedTouches) {
+      touches.set(t.identifier, touchPoint(t));
+    }
+  }, { passive: true });
+
+  previewHost.addEventListener("touchmove", (e) => {
+    if (blockManipulating) return;
+
+    const tlist = e.touches;
+    if (tlist.length === 2) {
+      // Pinch-zoom
+      e.preventDefault(); // need this to stop page scrolling
+      state.view.userMoved = true;
+
+      const [a, b] = [tlist[0], tlist[1]];
+      const pa = touches.get(a.identifier) || touchPoint(a);
+      const pb = touches.get(b.identifier) || touchPoint(b);
+      const prevDist = Math.hypot(pa.x - pb.x, pa.y - pb.y) || 1;
+      const newDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+
+      // Midpoint relative to previewHost
+      const rect = previewHost.getBoundingClientRect();
+      const midX = ((a.clientX + b.clientX) / 2) - rect.left;
+      const midY = ((a.clientY + b.clientY) / 2) - rect.top;
+
+      zoomAtPoint(newDist / prevDist, midX, midY);
+
+      touches.set(a.identifier, touchPoint(a));
+      touches.set(b.identifier, touchPoint(b));
+      return;
+    }
+
+    if (tlist.length === 1) {
+      // One-finger pan
+      const t = tlist[0];
+      const prev = touches.get(t.identifier) || touchPoint(t);
+      const dx = t.clientX - prev.x;
+      const dy = t.clientY - prev.y;
+      state.view.tx += dx;
+      state.view.ty += dy;
+      state.view.userMoved = true;
+      touches.set(t.identifier, touchPoint(t));
+      applyView(); drawRulers();
+    }
+  }, { passive: false });
+
+  previewHost.addEventListener("touchend", (e) => {
+    for (const t of e.changedTouches) touches.delete(t.identifier);
+  }, { passive: true });
+
+  previewHost.addEventListener("touchcancel", (e) => {
+    for (const t of e.changedTouches) touches.delete(t.identifier);
+  }, { passive: true });
 }
 
+/* -------------------- Drag / Resize yellow frame -------------------- */
 function wireDrag(svg, ov) {
   let active = null;
 
@@ -221,6 +285,7 @@ function wireDrag(svg, ov) {
   svg.addEventListener("pointercancel", end, { passive: true });
 }
 
+/* -------------------- HUD helpers -------------------- */
 function positionHud(e) {
   const isTouch = e && e.pointerType === "touch";
   const pad = 8;
